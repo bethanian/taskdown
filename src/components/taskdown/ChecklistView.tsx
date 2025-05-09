@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task } from '@/lib/types';
+import type { Task, Priority } from '@/lib/types';
 import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
 import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
@@ -30,6 +30,7 @@ interface ChecklistViewProps {
   toggleTaskCompletion: ReturnType<typeof useTasks>['toggleTaskCompletion'];
   deleteTask: ReturnType<typeof useTasks>['deleteTask'];
   editTask: ReturnType<typeof useTasks>['editTask'];
+  updateTaskPriority: ReturnType<typeof useTasks>['updateTaskPriority'];
   setTasks: ReturnType<typeof useTasks>['setTasks']; // For DND reordering
   saveTasks: ReturnType<typeof useTasks>['saveTasks']; // For persisting DND reordering
 }
@@ -40,6 +41,7 @@ export function ChecklistView({
   toggleTaskCompletion, 
   deleteTask, 
   editTask,
+  updateTaskPriority,
   setTasks,
   saveTasks
 }: ChecklistViewProps) {
@@ -58,8 +60,8 @@ export function ChecklistView({
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveEdit = (id: string, newText: string, newTags: string[]) => {
-    editTask(id, newText, newTags);
+  const handleSaveEdit = (id: string, newText: string, newTags: string[], newPriority: Priority) => {
+    editTask(id, newText, newTags, newPriority);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -82,8 +84,10 @@ export function ChecklistView({
         {[...Array(3)].map((_, i) => (
           <Card key={i} className="p-3">
             <div className="flex items-center gap-3">
-              <Skeleton className="h-5 w-5 rounded-sm" />
-              <Skeleton className="h-4 w-4/5" />
+              <Skeleton className="h-5 w-5 rounded-sm" /> {/* Drag handle placeholder */}
+              <Skeleton className="h-5 w-5 rounded-sm" /> {/* Priority placeholder */}
+              <Skeleton className="h-5 w-5 rounded-sm" /> {/* Checkbox placeholder */}
+              <Skeleton className="h-4 flex-grow" />
             </div>
           </Card>
         ))}
@@ -118,6 +122,7 @@ export function ChecklistView({
               onToggleComplete={toggleTaskCompletion}
               onDelete={deleteTask}
               onEdit={handleEdit}
+              onUpdatePriority={updateTaskPriority}
             />
           ))}
         </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import localforage from 'localforage';
-import type { Task } from '@/lib/types';
+import type { Task, Priority } from '@/lib/types';
 import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 
@@ -22,7 +22,12 @@ export function useTasks() {
       try {
         const storedTasks = await localforage.getItem<Task[]>(LOCALSTORAGE_TASKS_KEY);
         if (storedTasks) {
-          setTasks(storedTasks);
+          // Ensure all tasks have a priority (for backward compatibility)
+          const tasksWithPriority = storedTasks.map(task => ({
+            ...task,
+            priority: task.priority || 'none',
+          }));
+          setTasks(tasksWithPriority);
         }
       } catch (error) {
         console.error("Failed to load tasks from localForage", error);
@@ -61,6 +66,7 @@ export function useTasks() {
       text,
       completed: false,
       tags,
+      priority: 'none', // Default priority
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -85,17 +91,27 @@ export function useTasks() {
     toast({ title: "Success", description: "Task deleted." });
   }, [tasks, saveTasks, toast]);
 
-  const editTask = useCallback((id: string, newText: string, newTags: string[]) => {
+  const editTask = useCallback((id: string, newText: string, newTags: string[], newPriority: Priority) => {
     if (!newText.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
       return;
     }
     const updatedTasks = tasks.map(task =>
-      task.id === id ? { ...task, text: newText, tags: newTags, updatedAt: Date.now() } : task
+      task.id === id ? { ...task, text: newText, tags: newTags, priority: newPriority, updatedAt: Date.now() } : task
     );
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
     toast({ title: "Success", description: "Task updated." });
+  }, [tasks, saveTasks, toast]);
+
+  const updateTaskPriority = useCallback((id: string, priority: Priority) => {
+    const updatedTasks = tasks.map(task =>
+      task.id === id ? { ...task, priority, updatedAt: Date.now() } : task
+    );
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+    const priorityLabel = priority.charAt(0).toUpperCase() + priority.slice(1);
+    toast({ title: "Success", description: `Task priority set to ${priorityLabel}.` });
   }, [tasks, saveTasks, toast]);
 
 
@@ -106,7 +122,8 @@ export function useTasks() {
     toggleTaskCompletion,
     deleteTask,
     editTask,
-    setTasks, // Useful for drag-and-drop or batch updates if needed later
-    saveTasks, // Expose for more complex scenarios
+    updateTaskPriority,
+    setTasks, 
+    saveTasks, 
   };
 }

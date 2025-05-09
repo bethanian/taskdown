@@ -13,32 +13,48 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { Task } from '@/lib/types';
+import type { Task, Priority } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon } from 'lucide-react';
+import { XIcon, TagIcon, Flag, FlagOff } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface EditTaskDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   task: Task | null;
-  onSave: (id: string, newText: string, newTags: string[]) => void;
+  onSave: (id: string, newText: string, newTags: string[], newPriority: Priority) => void;
 }
+
+const priorityConfig: Record<Priority, { label: string; iconClassName: string }> = {
+  high: { label: 'High', iconClassName: 'text-red-500' },
+  medium: { label: 'Medium', iconClassName: 'text-yellow-500' },
+  low: { label: 'Low', iconClassName: 'text-blue-500' },
+  none: { label: 'No Priority', iconClassName: 'text-muted-foreground' },
+};
 
 export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskDialogProps) {
   const [text, setText] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [currentTagInput, setCurrentTagInput] = useState('');
+  const [priority, setPriority] = useState<Priority>('none');
 
   useEffect(() => {
     if (task) {
       setText(task.text);
       setTags(task.tags || []);
+      setPriority(task.priority || 'none');
     }
   }, [task]);
 
   const handleSave = () => {
     if (task) {
-      onSave(task.id, text, tags);
+      onSave(task.id, text, tags, priority);
       onOpenChange(false);
     }
   };
@@ -70,8 +86,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="task-text" className="text-right">
+          <div className="grid grid-cols-4 items-start gap-4">
+            <Label htmlFor="task-text" className="text-right pt-2">
               Text
             </Label>
             <Textarea
@@ -83,7 +99,31 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
             />
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="task-tags" className="text-right">
+            <Label htmlFor="task-priority" className="text-right">
+              Priority
+            </Label>
+            <Select value={priority} onValueChange={(value) => setPriority(value as Priority)}>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Set priority" />
+              </SelectTrigger>
+              <SelectContent>
+                {(['none', 'low', 'medium', 'high'] as Priority[]).map(p => (
+                  <SelectItem key={p} value={p}>
+                    <div className="flex items-center">
+                      {p === 'none' ? (
+                        <FlagOff className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
+                      ) : (
+                        <Flag className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
+                      )}
+                      {priorityConfig[p].label}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-4 items-start gap-4">
+            <Label htmlFor="task-tags" className="text-right pt-2">
               Tags
             </Label>
             <div className="col-span-3 space-y-2">
@@ -106,6 +146,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
                       onClick={() => removeTag(tag)}
                     >
                       <XIcon className="h-3 w-3" />
+                       <span className="sr-only">Remove tag {tag}</span>
                     </Button>
                   </Badge>
                 ))}
