@@ -6,7 +6,7 @@ import type { Task, Priority, Attachment } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -142,20 +142,20 @@ export function ChecklistItem({
         ref={setNodeRef}
         style={style}
         className={cn(
-          "mb-2 group transition-all duration-200 shadow-md hover:shadow-xl",
-          isDragging && "opacity-80 shadow-2xl z-50",
-          depth > 0 && "bg-card/90" 
+          "mb-1 group transition-all duration-200 shadow-sm hover:shadow-md",
+          isDragging && "opacity-80 shadow-lg z-50",
+          depth > 0 && "bg-card/95" 
         )}
       >
-        <CardContent className="p-3 flex flex-col gap-2">
-          <div className="flex items-center gap-2">
+        <CardContent className="p-1.5 flex flex-col gap-1">
+          <div className="flex items-center gap-1.5 group">
             {depth === 0 && ( 
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="cursor-grab h-8 w-8 opacity-50 group-hover:opacity-100 transition-opacity shrink-0"
+                    className="cursor-grab h-7 w-7 opacity-30 group-hover:opacity-100 transition-opacity shrink-0"
                     aria-label="Drag to reorder"
                     {...attributes}
                     {...listeners}
@@ -172,11 +172,11 @@ export function ChecklistItem({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
                       {task.priority === 'none' || !task.priority ? (
-                        <FlagOff className={`h-4 w-4 ${currentPriorityConfig.iconClassName}`} />
+                        <FlagOff className={`h-3.5 w-3.5 ${currentPriorityConfig.iconClassName}`} />
                       ) : (
-                        <FlagIcon className={`h-4 w-4 ${currentPriorityConfig.iconClassName}`} />
+                        <FlagIcon className={`h-3.5 w-3.5 ${currentPriorityConfig.iconClassName}`} />
                       )}
                       <span className="sr-only">Set priority: {currentPriorityConfig.label}</span>
                     </Button>
@@ -211,126 +211,126 @@ export function ChecklistItem({
               id={`task-${task.id}`}
               checked={task.completed}
               onCheckedChange={() => onToggleComplete(task.id)}
-              className="shrink-0"
-              aria-labelledby={`task-text-${task.id}`}
+              aria-label={`Mark task ${task.completed ? 'incomplete' : 'complete'}`}
+              className="h-4 w-4 rounded-sm border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
             />
-            
-            <div className="flex-grow space-y-1 min-w-0"> 
-              <label htmlFor={`task-${task.id}`} className="sr-only">Task text</label>
-              <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center justify-between gap-x-2" onClick={() => onToggleComplete(task.id)}>
-                <div className="flex-grow min-w-0">
+
+            {subtaskProgress !== null && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="w-12 h-1.5 ml-1.5">
+                    <Progress value={subtaskProgress} className="h-1.5" />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Subtask Progress: {subtaskProgress.toFixed(0)}%</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+
+            <div className="flex-grow min-w-0 flex items-center justify-between">
+              <div className="flex-grow min-w-0 flex items-center gap-1">
+                <div id={`task-text-${task.id}`} className="cursor-pointer flex-grow min-w-0" onClick={() => onToggleComplete(task.id)}>
                     <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
                 </div>
-                {subtaskProgress !== null && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="w-20 h-2 shrink-0" aria-label={`Subtask progress: ${Math.round(subtaskProgress)}%`}>
-                        <Progress value={subtaskProgress} className="h-full w-full" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{`${Math.round(subtaskProgress)}% complete (${task.subtasks?.filter(st => st.completed).length || 0}/${task.subtasks?.length || 0} subtasks)`}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <div className="flex flex-wrap shrink-0 gap-0.5 items-center ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                  {dueDateInfo && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
+                          <CalendarDays className="h-2.5 w-2.5 mr-0.5" />
+                          {dueDateInfo.text}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent><p>{dueDateInfo.tooltip}</p></TooltipContent>
+                    </Tooltip>
+                  )}
+                  {task.tags && task.tags.length > 0 && task.tags.map(tag => (
+                    <Badge key={tag} variant="secondary" className="text-xs py-0.5 px-1.5">
+                      <TagIcon className="h-2.5 w-2.5 mr-0.5" />
+                      <HighlightedText text={tag} highlight={searchTerm} />
+                    </Badge>
+                  ))}
+                  {task.assignedTo && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="text-xs py-0.5 px-1.5 flex items-center">
+                          <User className="h-2.5 w-2.5 mr-0.5 text-muted-foreground" />
+                          <HighlightedText text={task.assignedTo} highlight={searchTerm} />
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>Assigned to: {task.assignedTo}</TooltipContent>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5 mt-1 items-center">
-                {dueDateInfo && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
-                        <CalendarDays className="h-3 w-3 mr-1" />
-                        {dueDateInfo.text}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent><p>{dueDateInfo.tooltip}</p></TooltipContent>
-                  </Tooltip>
-                )}
-                {task.tags && task.tags.length > 0 && task.tags.map(tag => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    <TagIcon className="h-3 w-3 mr-1" />
-                    <HighlightedText text={tag} highlight={searchTerm} />
-                  </Badge>
-                ))}
-                {task.assignedTo && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge variant="outline" className="text-xs flex items-center">
-                        <User className="h-3 w-3 mr-1 text-muted-foreground" />
-                        <HighlightedText text={task.assignedTo} highlight={searchTerm} />
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent>Assigned to: {task.assignedTo}</TooltipContent>
-                  </Tooltip>
-                )}
+
+              <div className="flex items-center shrink-0 gap-0.5 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onEdit(task)} className="h-7 w-7">
+                      <Edit3 className="h-3.5 w-3.5" />
+                      <span className="sr-only">Edit task</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Edit task</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => setShowAddSubtaskInput(prev => !prev)} className="h-7 w-7">
+                      <Plus className="h-3.5 w-3.5" />
+                      <span className="sr-only">Add subtask</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Add subtask</TooltipContent>
+                </Tooltip>
+                 <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onGenerateShareLink(task.id)} className="h-7 w-7">
+                      <Share2 className="h-3.5 w-3.5" />
+                      <span className="sr-only">Share task</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Share task (copy link)</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onDelete(task.id)} className="h-7 w-7 hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span className="sr-only">Delete task</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Delete task</TooltipContent>
+                </Tooltip>
               </div>
-            </div>
-            
-            <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => onEdit(task)} className="h-8 w-8">
-                    <Edit3 className="h-4 w-4" />
-                    <span className="sr-only">Edit task</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Edit task</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => setShowAddSubtaskInput(prev => !prev)} className="h-8 w-8">
-                    <Plus className="h-4 w-4" />
-                    <span className="sr-only">Add subtask</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Add subtask</TooltipContent>
-              </Tooltip>
-               <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => onGenerateShareLink(task.id)} className="h-8 w-8">
-                    <Share2 className="h-4 w-4" />
-                    <span className="sr-only">Share task</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Share task (copy link)</TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button variant="ghost" size="icon" onClick={() => onDelete(task.id)} className="h-8 w-8 hover:text-destructive">
-                    <Trash2 className="h-4 w-4" />
-                    <span className="sr-only">Delete task</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Delete task</TooltipContent>
-              </Tooltip>
             </div>
           </div>
 
           {/* Subtasks and Details Accordion Area */}
           {(showAddSubtaskInput || (task.subtasks && task.subtasks.length > 0) || hasDetails) && (
-            <div className="pl-8 mt-1"> 
+            <div className="pl-6 mt-0.5"> 
               {showAddSubtaskInput && (
-                <div className="mb-2 flex gap-2 items-center">
+                <div className="mb-1.5 flex gap-1.5 items-center">
                   <Input 
                     value={newSubtaskText}
                     onChange={(e) => setNewSubtaskText(e.target.value)}
                     placeholder="New subtask text"
-                    className="h-8 flex-grow"
+                    className="h-7 flex-grow text-xs"
                     aria-label="New subtask input"
                     onKeyDown={(e) => e.key === 'Enter' && handleAddSubtaskSubmit()}
                   />
-                  <Button size="sm" onClick={handleAddSubtaskSubmit} className="h-8">Save</Button>
+                  <Button size="sm" onClick={handleAddSubtaskSubmit} className="h-7 text-xs px-2">Save</Button>
                   <Button variant="ghost" size="sm" onClick={() => {
                     setNewSubtaskText('');
                     setShowAddSubtaskInput(false);
-                  }} className="h-8">Cancel</Button>
+                  }} className="h-7 text-xs px-2">Cancel</Button>
                 </div>
               )}
 
               {task.subtasks && task.subtasks.length > 0 && (
                 <Accordion type="single" collapsible className="w-full" defaultValue={depth < 1 ? `subtasks-${task.id}`: undefined}>
                   <AccordionItem value={`subtasks-${task.id}`} className="border-b-0">
-                    <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-70 data-[state=open]:opacity-100">
+                    <AccordionTrigger className="text-xs py-0.5 px-1.5 rounded hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-60 data-[state=open]:opacity-100">
                       {task.subtasks.length} Subtask(s)
                     </AccordionTrigger>
                     <AccordionContent className="pt-1">
@@ -354,33 +354,33 @@ export function ChecklistItem({
               )}
               
               {hasDetails && (
-                 <Accordion type="single" collapsible className="w-full mt-1">
+                 <Accordion type="single" collapsible className="w-full mt-0.5">
                     <AccordionItem value={`details-${task.id}`} className="border-b-0">
-                      <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-70 data-[state=open]:opacity-100">
+                      <AccordionTrigger className="text-xs py-0.5 px-1.5 rounded hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-60 data-[state=open]:opacity-100">
                         <ChevronDown className="h-3 w-3 mr-1 transform transition-transform data-[state=open]:rotate-180" /> Details
                       </AccordionTrigger>
-                      <AccordionContent className="pt-2 pb-1 px-2 space-y-3">
+                      <AccordionContent className="pt-1.5 pb-0.5 px-1.5 space-y-2">
                         {task.notes && task.notes.trim() !== '' && (
                           <div>
-                            <h4 className="text-xs font-semibold mb-1 flex items-center">
-                              <FileText className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                            <h4 className="text-xs font-semibold mb-0.5 flex items-center">
+                              <FileText className="h-3 w-3 mr-1 text-muted-foreground" />
                               Notes
                             </h4>
-                            <div className="prose prose-sm dark:prose-invert max-w-none text-xs p-2 bg-muted/30 rounded-md">
+                            <div className="prose prose-xs dark:prose-invert max-w-none text-xs p-1.5 bg-muted/30 rounded">
                               <MarkdownWithHighlight markdownText={task.notes} searchTerm={searchTerm} />
                             </div>
                           </div>
                         )}
                         {task.attachments && task.attachments.length > 0 && (
                           <div>
-                            <h4 className="text-xs font-semibold mb-1 flex items-center">
-                               <Paperclip className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                            <h4 className="text-xs font-semibold mb-0.5 flex items-center">
+                               <Paperclip className="h-3 w-3 mr-1.5 text-muted-foreground" />
                                Attachments
                             </h4>
-                            <ul className="space-y-1">
+                            <ul className="space-y-0.5">
                               {task.attachments.map(att => (
                                 <li key={att.id} className="flex items-center text-xs">
-                                  <LinkIcon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                                  <LinkIcon className="h-3 w-3 mr-1 text-muted-foreground shrink-0" />
                                   <a 
                                     href={att.value} 
                                     target="_blank" 

@@ -1,0 +1,32 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# MCP Server Configuration
+
+The Model Context Protocol (MCP) configuration is stored in [.cursor/mcp.json](mdc:.cursor/mcp.json). This file defines the available MCP servers and their configurations.
+
+## Server Configurations
+
+### Sequential Thinking Server
+The sequential thinking server provides advanced problem-solving capabilities through structured thought processes. It is configured to run via NPX:
+
+```json
+{
+  "command": "npx",
+  "args": [
+    "-y",
+    "@modelcontextprotocol/server-sequential-thinking"
+  ]
+}
+```
+
+### FileSystem Server
+The FileSystem server handles file operations within the workspace with the following configuration:
+- Root directory: `./`
+- Allows access to all files (`**/*`)
+- Excludes `node_modules` and `.git` directories
+- Watches for file changes
+- Case-insensitive file operations
+

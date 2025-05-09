@@ -1,0 +1,56 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# Project Structure
+
+## Root Directory Structure
+- [src/](mdc:src): Main source code directory
+  - [app/](mdc:src/app): Next.js application routes and pages
+  - [components/](mdc:src/components): Reusable React components
+  - [hooks/](mdc:src/hooks): Custom React hooks
+  - [lib/](mdc:src/lib): Utility functions and shared libraries
+  - [ai/](mdc:src/ai): AI-related functionality
+
+## Configuration Files
+- [package.json](mdc:package.json): Project dependencies and scripts
+- [tsconfig.json](mdc:tsconfig.json): TypeScript configuration
+- [next.config.ts](mdc:next.config.ts): Next.js configuration
+- [tailwind.config.ts](mdc:tailwind.config.ts): Tailwind CSS configuration
+- [postcss.config.mjs](mdc:postcss.config.mjs): PostCSS configuration
+- [components.json](mdc:components.json): UI components configuration
+- [.cursor/mcp.json](mdc:.cursor/mcp.json): MCP server configurations
+
+## Documentation
+- [docs/](mdc:docs): Project documentation
+- [README.md](mdc:README.md): Project overview and setup instructions
+- [.cursor/rules/](mdc:.cursor/rules): Cursor AI assistance rules
+
+## Build and Development
+- [.next/](mdc:.next): Next.js build output
+- [node_modules/](mdc:node_modules): Project dependencies
+- [next-env.d.ts](mdc:next-env.d.ts): Next.js TypeScript declarations
+
+## Version Control
+- [.gitignore](mdc:.gitignore): Git ignore patterns
+- [.git/](mdc:.git): Git repository data
+
+This is a Next.js TypeScript project using:
+- Next.js for the framework
+- TypeScript for type safety
+- Tailwind CSS for styling
+- PostCSS for CSS processing
+- Custom components configuration
+
+## Rules
+The `.cursor/rules` directory contains markdown files (`.mdc`) that provide guidance to the AI about:
+- Project structure
+- Configuration settings
+- Development conventions
+- File relationships
+
+Each rule file uses Markdown format with Cursor-specific extensions for file references.
+
+
+

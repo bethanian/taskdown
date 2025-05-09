@@ -158,7 +158,16 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md md:max-w-lg lg:max-w-xl">
+      <DialogContent 
+        className="sm:max-w-md md:max-w-lg lg:max-w-xl"
+        onPointerDownOutside={(event) => {
+          // Allow interaction with elements within Radix UI Popover content or react-day-picker
+          const target = event.target as HTMLElement;
+          if (target.closest('[data-radix-popover-content]') || target.closest('.rdp')) {
+            event.preventDefault();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Edit Task</DialogTitle>
           <DialogDescription>

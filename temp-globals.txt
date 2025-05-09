@@ -1,9 +1,9 @@
-/* Import react-datepicker custom styles */
-@import "../styles/datepicker-custom.css";
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Import react-datepicker custom styles */
+@import "../styles/datepicker-custom.css";
 
 @layer base {
   :root {

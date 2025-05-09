@@ -150,11 +150,11 @@ export function KanbanCard({
         </CardHeader>
         <CardContent className="p-3 pt-0 space-y-2">
           
-          <div className="flex flex-wrap gap-1 items-center">
+          <div className="flex flex-wrap gap-2 items-center">
              {dueDateInfo && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
+                  <Badge variant="outline" className={cn("text-xs py-1 px-2 items-center", dueDateInfo.className)}>
                     <CalendarDays className="h-3 w-3 mr-1" />
                     {dueDateInfo.text}
                   </Badge>
