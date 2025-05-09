@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/taskdown/Header';
 import { NewTaskForm } from '@/components/taskdown/NewTaskForm';
 import { ChecklistView } from '@/components/taskdown/ChecklistView';
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
 import type { Task } from '@/lib/types';
+import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar'; // Added
 
 export default function TaskdownPage() {
   const { 
@@ -23,63 +24,76 @@ export default function TaskdownPage() {
   } = useTasks();
 
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [rawSearchTerm, setRawSearchTerm] = useState(''); // Added for search input
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Added for debounced search
 
-  const recursivelyFilterTasks = (tasksToFilter: Task[], currentFilters: string[]): Task[] => {
-    if (currentFilters.length === 0) {
-      return tasksToFilter;
-    }
-    
-    return tasksToFilter.reduce((acc: Task[], task) => {
-      // Check if the parent task matches
-      const parentMatches = task.tags.some(tag => currentFilters.includes(tag.toLowerCase()));
-      
-      // Recursively filter subtasks
-      const filteredSubtasks = task.subtasks ? recursivelyFilterTasks(task.subtasks, currentFilters) : [];
-      
-      // If parent matches or has matching subtasks, include it
-      if (parentMatches || filteredSubtasks.length > 0) {
-        acc.push({
-          ...task,
-          subtasks: filteredSubtasks // always include subtasks if parent is kept, even if they don't match
-        });
-      }
-      return acc;
-    }, []);
-  };
+  // Debounce search term
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(rawSearchTerm);
+    }, 300);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [rawSearchTerm]);
   
-  // Filter tasks based on active tags, ensuring parent tasks are kept if subtasks match
+  // Combined filtering logic for tags and search
   const filteredTasks = React.useMemo(() => {
-    if (activeFilters.length === 0) {
+    const currentSearchTerm = debouncedSearchTerm.trim().toLowerCase();
+    const currentActiveFilters = activeFilters.map(f => f.toLowerCase());
+
+    if (currentActiveFilters.length === 0 && currentSearchTerm === '') {
       return tasks;
     }
-    // A slightly different approach: show a task if it OR any of its subtasks match.
-    // This makes the filter more inclusive.
-    const filterWithHierarchy = (taskList: Task[]): Task[] => {
-        return taskList.map(task => {
-            const subtasksMatch = task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks) : [];
-            const taskItselfMatches = task.tags.some(tag => activeFilters.includes(tag.toLowerCase()));
 
-            if (taskItselfMatches || (subtasksMatch && subtasksMatch.length > 0)) {
-                // If the task itself matches, we show all its subtasks regardless of their tags.
-                // If the task itself doesn't match, but some subtasks do, we show the task and only the matching subtasks.
-                return {
-                    ...task,
-                    subtasks: taskItselfMatches ? task.subtasks : subtasksMatch
-                };
-            }
-            return null; 
-        }).filter(task => task !== null) as Task[];
+    const filterWithHierarchy = (
+      taskList: Task[],
+      activeTagFilters: string[],
+      searchTerm: string
+    ): Task[] => {
+      return taskList
+        .map(task => {
+          const filteredSubtasks = task.subtasks && task.subtasks.length > 0
+            ? filterWithHierarchy(task.subtasks, activeTagFilters, searchTerm)
+            : [];
+
+          const taskTextMatchesSearch = searchTerm === '' || task.text.toLowerCase().includes(searchTerm);
+          const taskNotesMatchesSearch = searchTerm === '' || (task.notes && task.notes.toLowerCase().includes(searchTerm));
+          const taskTagsMatchSearch = searchTerm === '' || task.tags.some(tag => tag.toLowerCase().includes(searchTerm));
+          const taskItselfMatchesSearch = taskTextMatchesSearch || taskNotesMatchesSearch || taskTagsMatchSearch;
+          
+          const taskItselfMatchesTags = activeTagFilters.length === 0 || 
+            task.tags.some(tag => activeTagFilters.includes(tag.toLowerCase()));
+
+          const taskItselfIsKept = taskItselfMatchesTags && taskItselfMatchesSearch;
+
+          if (taskItselfIsKept || filteredSubtasks.length > 0) {
+            return {
+              ...task,
+              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, activeTagFilters, searchTerm) : []) : filteredSubtasks,
+            };
+          }
+          return null;
+        })
+        .filter(task => task !== null) as Task[];
     };
     
-    return filterWithHierarchy(tasks);
+    return filterWithHierarchy(tasks, currentActiveFilters, currentSearchTerm);
 
-  }, [tasks, activeFilters]);
+  }, [tasks, activeFilters, debouncedSearchTerm]);
 
 
   return (
     <div className="container mx-auto max-w-3xl py-8 px-4 min-h-screen flex flex-col">
       <Header />
-      <main className="mt-8 flex-grow">
+      <div className="my-6">
+        <GlobalSearchBar 
+          searchTerm={rawSearchTerm} 
+          setSearchTerm={setRawSearchTerm} 
+        />
+      </div>
+      <main className="flex-grow">
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
            <h2 className="text-xl font-semibold mb-3 text-primary">Add New Task</h2>
           <NewTaskForm addTask={addTask} />
@@ -98,8 +112,9 @@ export default function TaskdownPage() {
           editTask={editTask}
           updateTaskPriority={updateTaskPriority}
           addSubtask={addSubtask}
-          setTasks={setTasks} // For DND, ensure it uses the original tasks or handles filtering appropriately
-          saveTasks={saveTasks} // Same as above
+          setTasks={setTasks}
+          saveTasks={saveTasks}
+          searchTerm={debouncedSearchTerm.trim().toLowerCase()} // Pass search term
         />
       </main>
       <footer className="text-center py-6 text-sm text-muted-foreground">

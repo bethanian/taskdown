@@ -10,8 +10,6 @@ import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import {
   Accordion,
   AccordionContent,
@@ -29,6 +27,7 @@ import {
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
+import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
 
 interface ChecklistItemProps {
   task: Task;
@@ -38,6 +37,7 @@ interface ChecklistItemProps {
   onUpdatePriority: (id: string, priority: Priority) => void;
   onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
   depth?: number;
+  searchTerm?: string; // Added searchTerm prop
 }
 
 const priorityConfig: Record<Priority, { label: string; iconClassName: string; itemClassName?: string }> = {
@@ -63,7 +63,8 @@ export function ChecklistItem({
   onEdit, 
   onUpdatePriority,
   onAddSubtask,
-  depth = 0 
+  depth = 0,
+  searchTerm, // Added searchTerm prop
 }: ChecklistItemProps) {
   const {
     attributes,
@@ -177,14 +178,14 @@ export function ChecklistItem({
             <div className="flex-grow space-y-1 min-w-0"> 
               <label htmlFor={`task-${task.id}`} className="sr-only">Task text</label>
               <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center" onClick={() => onToggleComplete(task.id)}>
-                  <ChecklistItemContent text={task.text} completed={task.completed} />
+                  <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
               </div>
               {task.tags && task.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
                   {task.tags.map(tag => (
                     <Badge key={tag} variant="secondary" className="text-xs">
                       <TagIcon className="h-3 w-3 mr-1" />
-                      {tag}
+                      <HighlightedText text={tag} highlight={searchTerm} />
                     </Badge>
                   ))}
                 </div>
@@ -260,6 +261,7 @@ export function ChecklistItem({
                           onUpdatePriority={onUpdatePriority}
                           onAddSubtask={onAddSubtask}
                           depth={depth + 1}
+                          searchTerm={searchTerm} // Pass searchTerm to subtasks
                         />
                       ))}
                     </AccordionContent>
@@ -281,7 +283,7 @@ export function ChecklistItem({
                               Notes
                             </h4>
                             <div className="prose prose-sm dark:prose-invert max-w-none text-xs p-2 bg-muted/30 rounded-md">
-                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.notes}</ReactMarkdown>
+                              <MarkdownWithHighlight markdownText={task.notes} searchTerm={searchTerm} />
                             </div>
                           </div>
                         )}
@@ -302,6 +304,7 @@ export function ChecklistItem({
                                     className="text-primary hover:underline truncate"
                                     title={att.value}
                                   >
+                                    {/* Attachment names/URLs are not typically searched/highlighted in this context, but could be if needed */}
                                     {att.name || getUrlHostname(att.value)}
                                   </a>
                                 </li>

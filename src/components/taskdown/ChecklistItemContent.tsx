@@ -1,25 +1,23 @@
 "use client";
 
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
+import { MarkdownWithHighlight } from './MarkdownWithHighlight';
 
 interface ChecklistItemContentProps {
   text: string;
   completed: boolean;
+  searchTerm?: string; // Added searchTerm prop
 }
 
-export function ChecklistItemContent({ text, completed }: ChecklistItemContentProps) {
+export function ChecklistItemContent({ text, completed, searchTerm }: ChecklistItemContentProps) {
   return (
     <div 
       className={cn(
-        "prose prose-sm dark:prose-invert max-w-none break-words [&>p]:my-0", // Remove top/bottom margin from paragraphs
+        "prose prose-sm dark:prose-invert max-w-none break-words [&>p]:my-0",
         completed && "line-through text-muted-foreground"
       )}
     >
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {text}
-      </ReactMarkdown>
+      <MarkdownWithHighlight markdownText={text} searchTerm={searchTerm} />
     </div>
   );
 }
