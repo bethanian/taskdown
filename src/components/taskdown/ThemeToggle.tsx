@@ -9,6 +9,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 
@@ -33,6 +34,25 @@ export function ThemeToggle() {
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")}>
           System
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => setTheme("sakura")}>
+          Sakura
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("aqua")}>
+          Aqua
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("onyx")}>
+          Onyx
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("leather")}>
+          Leather
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("lightning")}>
+          Lightning
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("reddish")}>
+          Reddish
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
