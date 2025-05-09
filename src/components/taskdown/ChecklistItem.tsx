@@ -1,3 +1,4 @@
+// src/components/taskdown/ChecklistItem.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -10,6 +11,7 @@ import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Progress } from '@/components/ui/progress'; // Added Progress
 import {
   Accordion,
   AccordionContent,
@@ -37,7 +39,7 @@ interface ChecklistItemProps {
   onUpdatePriority: (id: string, priority: Priority) => void;
   onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
   depth?: number;
-  searchTerm?: string; // Added searchTerm prop
+  searchTerm?: string;
 }
 
 const priorityConfig: Record<Priority, { label: string; iconClassName: string; itemClassName?: string }> = {
@@ -64,7 +66,7 @@ export function ChecklistItem({
   onUpdatePriority,
   onAddSubtask,
   depth = 0,
-  searchTerm, // Added searchTerm prop
+  searchTerm,
 }: ChecklistItemProps) {
   const {
     attributes,
@@ -85,6 +87,16 @@ export function ChecklistItem({
 
   const [showAddSubtaskInput, setShowAddSubtaskInput] = useState(false);
   const [newSubtaskText, setNewSubtaskText] = useState('');
+
+  const calculateSubtaskProgress = (subtasks: Task[] | undefined): number | null => {
+    if (!subtasks || subtasks.length === 0) {
+      return null;
+    }
+    const completedSubtasks = subtasks.filter(st => st.completed).length;
+    return (completedSubtasks / subtasks.length) * 100;
+  };
+
+  const subtaskProgress = calculateSubtaskProgress(task.subtasks);
 
   const handleAddSubtaskSubmit = () => {
     if (newSubtaskText.trim()) {
@@ -177,8 +189,22 @@ export function ChecklistItem({
             
             <div className="flex-grow space-y-1 min-w-0"> 
               <label htmlFor={`task-${task.id}`} className="sr-only">Task text</label>
-              <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center" onClick={() => onToggleComplete(task.id)}>
-                  <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
+              <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center justify-between gap-x-2" onClick={() => onToggleComplete(task.id)}>
+                <div className="flex-grow min-w-0">
+                    <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
+                </div>
+                {subtaskProgress !== null && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="w-20 h-2 shrink-0" aria-label={`Subtask progress: ${Math.round(subtaskProgress)}%`}>
+                        <Progress value={subtaskProgress} className="h-full w-full" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{`${Math.round(subtaskProgress)}% complete (${task.subtasks?.filter(st => st.completed).length || 0}/${task.subtasks?.length || 0} subtasks)`}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
               </div>
               {task.tags && task.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 mt-1">
@@ -261,7 +287,7 @@ export function ChecklistItem({
                           onUpdatePriority={onUpdatePriority}
                           onAddSubtask={onAddSubtask}
                           depth={depth + 1}
-                          searchTerm={searchTerm} // Pass searchTerm to subtasks
+                          searchTerm={searchTerm}
                         />
                       ))}
                     </AccordionContent>
@@ -304,7 +330,6 @@ export function ChecklistItem({
                                     className="text-primary hover:underline truncate"
                                     title={att.value}
                                   >
-                                    {/* Attachment names/URLs are not typically searched/highlighted in this context, but could be if needed */}
                                     {att.name || getUrlHostname(att.value)}
                                   </a>
                                 </li>
