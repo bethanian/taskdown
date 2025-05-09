@@ -1,0 +1,79 @@
+"use client";
+
+import React, { useState } from 'react';
+import type { Task } from '@/lib/types';
+import { ChecklistItem } from './ChecklistItem';
+import { EditTaskDialog } from './EditTaskDialog';
+import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
+import { Skeleton } from '@/components/ui/skeleton';
+import Image from 'next/image';
+
+interface ChecklistViewProps {
+  tasks: Task[];
+  isLoading: boolean;
+  toggleTaskCompletion: ReturnType<typeof useTasks>['toggleTaskCompletion'];
+  deleteTask: ReturnType<typeof useTasks>['deleteTask'];
+  editTask: ReturnType<typeof useTasks>['editTask'];
+}
+
+export function ChecklistView({ tasks, isLoading, toggleTaskCompletion, deleteTask, editTask }: ChecklistViewProps) {
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const handleEdit = (task: Task) => {
+    setEditingTask(task);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleSaveEdit = (id: string, newText: string, newTags: string[]) => {
+    editTask(id, newText, newTags);
+    setIsEditDialogOpen(false);
+    setEditingTask(null);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[...Array(3)].map((_, i) => (
+          <Card key={i} className="p-3">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-5 w-5 rounded-sm" />
+              <Skeleton className="h-4 w-4/5" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (tasks.length === 0) {
+    return (
+      <div className="text-center py-10 text-muted-foreground flex flex-col items-center">
+        <Image src="https://picsum.photos/seed/empty/300/200" alt="Empty checklist" width={300} height={200} className="rounded-lg mb-4 shadow-md" data-ai-hint="empty illustration" />
+        <p className="text-lg">No tasks yet. Add one to get started!</p>
+      </div>
+    );
+  }
+  
+  return (
+    <div>
+      {tasks.map(task => (
+        <ChecklistItem
+          key={task.id}
+          task={task}
+          onToggleComplete={toggleTaskCompletion}
+          onDelete={deleteTask}
+          onEdit={handleEdit}
+        />
+      ))}
+      {editingTask && (
+        <EditTaskDialog
+          isOpen={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          task={editingTask}
+          onSave={handleSaveEdit}
+        />
+      )}
+    </div>
+  );
+}

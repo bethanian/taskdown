@@ -1,0 +1,10 @@
+export interface Task {
+  id: string;
+  text: string; // User-entered text, potentially with markdown
+  completed: boolean;
+  tags: string[]; // Array of tag strings
+  createdAt: number; // Store as timestamp for easier localForage storage
+  updatedAt: number; // Store as timestamp
+}
+
+export type Tag = string;
