@@ -6,7 +6,7 @@ import type { Task, Priority, Attachment } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2 } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,6 +30,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
+import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 
 interface ChecklistItemProps {
   task: Task;
@@ -59,6 +60,30 @@ function getUrlHostname(url: string): string {
   }
 }
 
+function getDueDateInfo(dueDateTimestamp?: number, completed?: boolean): { text: string, className: string, tooltip: string } | null {
+  if (!dueDateTimestamp) return null;
+  if (completed) return { text: format(new Date(dueDateTimestamp), "MMM d"), className: "text-green-600", tooltip: `Completed, Due: ${format(new Date(dueDateTimestamp), "PPP")}`};
+
+  const dueDateObj = new Date(dueDateTimestamp);
+  const today = new Date();
+  
+  if (isPast(dueDateObj) && !isToday(dueDateObj)) {
+    return { text: format(dueDateObj, "MMM d"), className: "text-red-500 font-semibold", tooltip: `Overdue: ${format(dueDateObj, "PPP")}` };
+  }
+  if (isToday(dueDateObj)) {
+    return { text: "Today", className: "text-orange-500 font-semibold", tooltip: `Due Today: ${format(dueDateObj, "PPP")}` };
+  }
+  const diffDays = differenceInCalendarDays(dueDateObj, today);
+  if (diffDays === 1) {
+     return { text: "Tomorrow", className: "text-yellow-600", tooltip: `Due Tomorrow: ${format(dueDateObj, "PPP")}` };
+  }
+  if (diffDays > 0 && diffDays <= 7) {
+     return { text: `In ${diffDays} days`, className: "text-blue-600", tooltip: `Due: ${format(dueDateObj, "PPP")}` };
+  }
+  return { text: format(dueDateObj, "MMM d"), className: "text-muted-foreground", tooltip: `Due: ${format(dueDateObj, "PPP")}` };
+}
+
+
 export function ChecklistItem({ 
   task, 
   onToggleComplete, 
@@ -86,6 +111,7 @@ export function ChecklistItem({
   };
   
   const currentPriorityConfig = priorityConfig[task.priority || 'none'];
+  const dueDateInfo = getDueDateInfo(task.dueDate, task.completed);
 
   const [showAddSubtaskInput, setShowAddSubtaskInput] = useState(false);
   const [newSubtaskText, setNewSubtaskText] = useState('');
@@ -208,7 +234,18 @@ export function ChecklistItem({
                   </Tooltip>
                 )}
               </div>
-              <div className="flex flex-wrap gap-1 mt-1 items-center">
+              <div className="flex flex-wrap gap-1.5 mt-1 items-center">
+                {dueDateInfo && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
+                        <CalendarDays className="h-3 w-3 mr-1" />
+                        {dueDateInfo.text}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent><p>{dueDateInfo.tooltip}</p></TooltipContent>
+                  </Tooltip>
+                )}
                 {task.tags && task.tags.length > 0 && task.tags.map(tag => (
                   <Badge key={tag} variant="secondary" className="text-xs">
                     <TagIcon className="h-3 w-3 mr-1" />

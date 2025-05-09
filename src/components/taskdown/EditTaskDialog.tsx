@@ -1,3 +1,4 @@
+// src/components/taskdown/EditTaskDialog.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -16,7 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User } from 'lucide-react';
+import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User, CalendarDays } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -25,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { DatePicker } from '@/components/ui/date-picker'; // Import the DatePicker
 
 interface EditTaskDialogProps {
   isOpen: boolean;
@@ -38,7 +40,8 @@ interface EditTaskDialogProps {
     newNotes: string,
     newAttachments: Attachment[],
     newStatus: TaskStatus,
-    newAssignedTo: string | undefined
+    newAssignedTo: string | undefined,
+    newDueDate: number | undefined // Added dueDate
   ) => void;
 }
 
@@ -69,6 +72,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const [currentAttachmentNameInput, setCurrentAttachmentNameInput] = useState('');
   const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS);
   const [assignedTo, setAssignedTo] = useState<string | undefined>(undefined);
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined); // State for due date
 
   useEffect(() => {
     if (task) {
@@ -79,6 +83,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setAttachments(task.attachments || []);
       setStatus(task.status || DEFAULT_TASK_STATUS);
       setAssignedTo(task.assignedTo || undefined);
+      setDueDate(task.dueDate ? new Date(task.dueDate) : undefined); // Set due date from task
       setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
@@ -87,7 +92,17 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
   const handleSave = () => {
     if (task) {
-      onSave(task.id, text, tags, priority, notes, attachments, status, assignedTo);
+      onSave(
+        task.id, 
+        text, 
+        tags, 
+        priority, 
+        notes, 
+        attachments, 
+        status, 
+        assignedTo,
+        dueDate ? dueDate.getTime() : undefined // Pass dueDate as timestamp
+      );
       onOpenChange(false);
     }
   };
@@ -213,6 +228,16 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Due Date */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-task-dueDate" className="text-right col-span-1">
+              Due Date
+            </Label>
+            <div className="col-span-3">
+               <DatePicker date={dueDate} setDate={setDueDate} />
+            </div>
           </div>
 
           {/* Assigned To */}

@@ -1,3 +1,4 @@
+// src/components/taskdown/ChecklistView.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -74,9 +75,10 @@ export function ChecklistView({
     newNotes: string,
     newAttachments: Attachment[],
     newStatus: TaskStatus,
-    newAssignedTo: string | undefined
+    newAssignedTo: string | undefined,
+    newDueDate: number | undefined // Added newDueDate
   ) => {
-    editTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo);
+    editTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate); // Pass newDueDate
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };

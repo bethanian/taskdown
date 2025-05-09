@@ -1,16 +1,17 @@
+// src/components/taskdown/KanbanCard.tsx
 "use client";
 
 import React from 'react';
 import type { Task, Priority } from '@/lib/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Edit3, Trash2, TagIcon, FlagIcon, FlagOff, Plus, FileText, Paperclip, LinkIcon, CheckCircle, Circle, User, Share2 } from 'lucide-react';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Edit3, Trash2, TagIcon, FlagIcon, User, Share2, CalendarDays, FileText, Paperclip, LinkIcon, CheckCircle, Circle } from 'lucide-react'; // Removed FlagOff, Plus
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from '@/components/ui/progress';
 import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
 import { cn } from '@/lib/utils';
+import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 // import { useSortable } from '@dnd-kit/sortable'; // For future DND
 // import { CSS } from '@dnd-kit/utilities'; // For future DND
 
@@ -41,6 +42,29 @@ function getUrlHostname(url: string): string {
   }
 }
 
+function getDueDateInfo(dueDateTimestamp?: number, completed?: boolean): { text: string, className: string, tooltip: string } | null {
+  if (!dueDateTimestamp) return null;
+  if (completed) return { text: format(new Date(dueDateTimestamp), "MMM d"), className: "text-green-600", tooltip: `Completed, Due: ${format(new Date(dueDateTimestamp), "PPP")}`};
+  
+  const dueDateObj = new Date(dueDateTimestamp);
+  const today = new Date();
+
+  if (isPast(dueDateObj) && !isToday(dueDateObj)) {
+    return { text: format(dueDateObj, "MMM d"), className: "text-red-500 font-semibold", tooltip: `Overdue: ${format(dueDateObj, "PPP")}` };
+  }
+  if (isToday(dueDateObj)) {
+    return { text: "Today", className: "text-orange-500 font-semibold", tooltip: `Due Today: ${format(dueDateObj, "PPP")}` };
+  }
+   const diffDays = differenceInCalendarDays(dueDateObj, today);
+  if (diffDays === 1) {
+     return { text: "Tomorrow", className: "text-yellow-600", tooltip: `Due Tomorrow: ${format(dueDateObj, "PPP")}` };
+  }
+  if (diffDays > 0 && diffDays <= 7) {
+     return { text: `In ${diffDays} days`, className: "text-blue-600", tooltip: `Due: ${format(dueDateObj, "PPP")}` };
+  }
+  return { text: format(dueDateObj, "MMM d"), className: "text-muted-foreground", tooltip: `Due: ${format(dueDateObj, "PPP")}` };
+}
+
 
 export function KanbanCard({ 
   task, 
@@ -56,6 +80,7 @@ export function KanbanCard({
   // const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.8 : 1, }; // For DND
 
   const currentPriorityConfig = priorityConfig[task.priority || 'none'];
+  const dueDateInfo = getDueDateInfo(task.dueDate, task.completed);
 
   const calculateSubtaskProgress = (subtasks: Task[] | undefined): number | null => {
     if (!subtasks || subtasks.length === 0) return null;
@@ -126,6 +151,17 @@ export function KanbanCard({
         <CardContent className="p-3 pt-0 space-y-2">
           
           <div className="flex flex-wrap gap-1 items-center">
+             {dueDateInfo && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
+                    <CalendarDays className="h-3 w-3 mr-1" />
+                    {dueDateInfo.text}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent><p>{dueDateInfo.tooltip}</p></TooltipContent>
+              </Tooltip>
+            )}
             {task.priority !== 'none' && (
               <Tooltip>
                 <TooltipTrigger>

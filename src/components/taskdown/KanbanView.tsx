@@ -1,3 +1,4 @@
+// src/components/taskdown/KanbanView.tsx
 "use client";
 
 import React, { useState } from 'react';
@@ -12,7 +13,7 @@ import Image from 'next/image';
 interface KanbanViewProps {
   tasks: Task[];
   isLoading: boolean;
-  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined) => void;
+  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined, dueDate: number | undefined) => void; // Added dueDate
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
   onToggleComplete: (id: string) => void;
   onDeleteTask: (id: string) => void;
@@ -50,9 +51,10 @@ export function KanbanView({
     newNotes: string,
     newAttachments: Attachment[],
     newStatus: TaskStatus,
-    newAssignedTo: string | undefined
+    newAssignedTo: string | undefined,
+    newDueDate: number | undefined // Added newDueDate
   ) => {
-    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo);
+    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate); // Pass newDueDate
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };

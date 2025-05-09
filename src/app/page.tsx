@@ -13,6 +13,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
 import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
 import { processTaskInput, type ProcessTaskInput, type ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
+import { useToast } from '@/hooks/use-toast';
+import { format, isPast, isToday, isFuture, differenceInCalendarDays } from 'date-fns';
 
 
 export default function TaskdownPage() {
@@ -37,6 +39,8 @@ export default function TaskdownPage() {
   const [rawSearchTerm, setRawSearchTerm] = useState(''); 
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'list' | 'kanban'>('list');
+  const [remindedTaskIds, setRemindedTaskIds] = useState<Set<string>>(new Set());
+  const { toast } = useToast();
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -102,10 +106,75 @@ export default function TaskdownPage() {
       return output;
     } catch (e) {
       console.error("Error processing AI tasks in page:", e);
-      // Toasting is handled in AiTaskInputForm or applyAiTaskOperations
       return null;
     }
   };
+
+  useEffect(() => {
+    if (isLoading || tasks.length === 0) return;
+
+    const checkReminders = () => {
+      const now = new Date();
+      const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+      let newRemindersShown = false;
+      const newRemindedIds = new Set(remindedTaskIds);
+
+      const showReminderRecursive = (taskList: Task[]) => {
+        for (const task of taskList) {
+          if (task.dueDate && !task.completed && !newRemindedIds.has(task.id)) {
+            const dueDateObj = new Date(task.dueDate);
+            
+            if (isPast(dueDateObj) && !isToday(dueDateObj)) { 
+              toast({
+                title: "Task Overdue!",
+                description: `"${task.text}" was due on ${format(dueDateObj, "PPP")}.`,
+                variant: "destructive",
+              });
+              newRemindedIds.add(task.id);
+              newRemindersShown = true;
+            } else if (isToday(dueDateObj)) { 
+              toast({
+                title: "Reminder: Task Due Today!",
+                description: `"${task.text}" is due today.`,
+              });
+              newRemindedIds.add(task.id);
+              newRemindersShown = true;
+            } else if (isFuture(dueDateObj) && differenceInCalendarDays(dueDateObj, now) === 1) { // Due tomorrow
+               toast({
+                title: "Reminder: Task Due Tomorrow",
+                description: `"${task.text}" is due tomorrow, ${format(dueDateObj, "PPP")}.`,
+              });
+              newRemindedIds.add(task.id);
+              newRemindersShown = true;
+            }
+             else if (isFuture(dueDateObj) && dueDateObj <= twentyFourHoursFromNow && differenceInCalendarDays(dueDateObj, now) > 1) { // Due within 24 hours but not today or tomorrow
+              toast({
+                title: "Reminder: Task Due Soon",
+                description: `"${task.text}" is due on ${format(dueDateObj, "PPP")}.`,
+              });
+              newRemindedIds.add(task.id);
+              newRemindersShown = true;
+            }
+          }
+          if (task.subtasks) {
+            showReminderRecursive(task.subtasks);
+          }
+        }
+      };
+      
+      showReminderRecursive(tasks);
+      if(newRemindersShown) {
+        setRemindedTaskIds(newRemindedIds);
+      }
+    };
+
+    const timerId = setTimeout(checkReminders, 2000); // Check shortly after tasks load/change
+
+    return () => {
+      clearTimeout(timerId);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, isLoading, toast]); // remindedTaskIds is intentionally omitted to allow re-triggering on task changes. Set inside.
 
 
   return (

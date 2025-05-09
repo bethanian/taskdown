@@ -21,6 +21,7 @@ export interface Task {
   status: TaskStatus; // Ensure all tasks have a status
   createdAt: number; // Store as timestamp for easier localForage storage
   updatedAt: number; // Store as timestamp
+  dueDate?: number; // Optional: due date as a timestamp
   subtasks?: Task[]; // Optional array for nested subtasks
   notes?: string; // Optional multiline text notes
   attachments?: Attachment[]; // Optional array of attachments
@@ -29,3 +30,4 @@ export interface Task {
 }
 
 export type Tag = string;
+

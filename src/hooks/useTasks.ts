@@ -1,3 +1,4 @@
+// src/hooks/useTasks.ts
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
@@ -125,6 +126,7 @@ export function useTasks() {
       attachments: task.attachments || [],
       assignedTo: task.assignedTo || undefined,
       shareId: task.shareId || undefined,
+      dueDate: task.dueDate || undefined, // Load dueDate
       subtasks: task.subtasks ? loadTasksRecursive(task.subtasks) : [],
     }));
   };
@@ -182,6 +184,7 @@ export function useTasks() {
       attachments: [],
       assignedTo: undefined,
       shareId: undefined,
+      dueDate: undefined, // Initialize dueDate
     };
     const updatedTasks = [newTask, ...currentTasks];
     return { updatedTasks, newTaskId: newTask.id };
@@ -205,6 +208,7 @@ export function useTasks() {
       attachments: [],
       assignedTo: undefined,
       shareId: undefined,
+      dueDate: undefined, // Initialize dueDate for subtasks
     };
     return addSubtaskRecursive(currentTasks, parentId, newSubtask);
   };
@@ -220,14 +224,14 @@ export function useTasks() {
       setTasks(updatedTasks);
       saveTasks(updatedTasks);
       toast({ title: "Success", description: "Task added." });
-    } else if (text.trim()) { // Only toast if text was not empty but still failed (e.g. validation)
+    } else if (text.trim()) { 
       toast({ title: "Info", description: "Task text cannot be empty." });
     }
   }, [tasks, saveTasks, toast]);
 
   const addSubtask = useCallback((parentId: string, text: string, tags: string[] = [], priority: Priority = 'none') => {
     const updatedTasks = coreAddSubtask(parentId, text, tasks, tags, priority);
-    if (updatedTasks !== tasks) { // Check if any change was made
+    if (updatedTasks !== tasks) { 
         setTasks(updatedTasks);
         saveTasks(updatedTasks);
         toast({ title: "Success", description: "Subtask added." });
@@ -268,7 +272,8 @@ export function useTasks() {
     newNotes: string,
     newAttachments: Attachment[],
     newStatus: TaskStatus,
-    newAssignedTo: string | undefined
+    newAssignedTo: string | undefined,
+    newDueDate: number | undefined // Added newDueDate
   ) => {
     if (!newText.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
@@ -283,6 +288,7 @@ export function useTasks() {
       attachments: newAttachments,
       status: newStatus,
       assignedTo: newAssignedTo,
+      dueDate: newDueDate, // Update dueDate
       completed: newStatus === 'Done' ? true : (newStatus !== 'Done' && task.completed ? false : task.completed),
       updatedAt: Date.now(),
     });
@@ -439,10 +445,10 @@ export function useTasks() {
   return { 
     tasks, 
     isLoading, 
-    addTask, // This is the wrapped addSingleTask
-    addSubtask, // This is the wrapped addSingleSubtask
+    addTask,
+    addSubtask,
     toggleTaskCompletion,
-    deleteTask, // This is the wrapped deleteSingleTask
+    deleteTask,
     editTask,
     updateTaskPriority,
     updateTaskStatus,
