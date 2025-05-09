@@ -13,6 +13,7 @@ export default function TaskdownPage() {
     tasks, 
     isLoading, 
     addTask, 
+    addSubtask,
     toggleTaskCompletion, 
     deleteTask, 
     editTask, 
@@ -50,6 +51,7 @@ export default function TaskdownPage() {
           deleteTask={deleteTask}
           editTask={editTask}
           updateTaskPriority={updateTaskPriority}
+          addSubtask={addSubtask}
           setTasks={setTasks}
           saveTasks={saveTasks}
         />

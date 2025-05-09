@@ -8,6 +8,7 @@ export interface Task {
   priority: Priority;
   createdAt: number; // Store as timestamp for easier localForage storage
   updatedAt: number; // Store as timestamp
+  subtasks?: Task[]; // Optional array for nested subtasks
 }
 
 export type Tag = string;

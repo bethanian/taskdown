@@ -31,6 +31,7 @@ interface ChecklistViewProps {
   deleteTask: ReturnType<typeof useTasks>['deleteTask'];
   editTask: ReturnType<typeof useTasks>['editTask'];
   updateTaskPriority: ReturnType<typeof useTasks>['updateTaskPriority'];
+  addSubtask: ReturnType<typeof useTasks>['addSubtask'];
   setTasks: ReturnType<typeof useTasks>['setTasks']; // For DND reordering
   saveTasks: ReturnType<typeof useTasks>['saveTasks']; // For persisting DND reordering
 }
@@ -42,6 +43,7 @@ export function ChecklistView({
   deleteTask, 
   editTask,
   updateTaskPriority,
+  addSubtask,
   setTasks,
   saveTasks
 }: ChecklistViewProps) {
@@ -70,11 +72,15 @@ export function ChecklistView({
     const {active, over} = event;
     
     if (over && active.id !== over.id) {
-      const oldIndex = tasks.findIndex((task) => task.id === active.id);
-      const newIndex = tasks.findIndex((task) => task.id === over.id);
-      const reorderedTasks = arrayMove(tasks, oldIndex, newIndex);
-      setTasks(reorderedTasks);
-      saveTasks(reorderedTasks);
+      // Only allow dragging for top-level tasks
+      const oldIndex = tasks.findIndex((task) => task.id === active.id && !task.subtasks?.some(st => st.id === active.id));
+      const newIndex = tasks.findIndex((task) => task.id === over.id && !task.subtasks?.some(st => st.id === over.id));
+
+      if (oldIndex !== -1 && newIndex !== -1) {
+        const reorderedTasks = arrayMove(tasks, oldIndex, newIndex);
+        setTasks(reorderedTasks);
+        saveTasks(reorderedTasks);
+      }
     }
   }
 
@@ -111,7 +117,7 @@ export function ChecklistView({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={tasks.map(task => task.id)}
+        items={tasks.map(task => task.id)} // DND only for top-level items
         strategy={verticalListSortingStrategy}
       >
         <div>
@@ -123,6 +129,8 @@ export function ChecklistView({
               onDelete={deleteTask}
               onEdit={handleEdit}
               onUpdatePriority={updateTaskPriority}
+              onAddSubtask={addSubtask}
+              depth={0} // Top-level tasks are at depth 0
             />
           ))}
         </div>
