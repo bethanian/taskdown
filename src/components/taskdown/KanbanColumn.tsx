@@ -14,6 +14,7 @@ interface KanbanColumnProps {
   onDeleteTask: (id: string) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
   onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
+  onGenerateShareLink: (taskId: string) => Promise<string | null>;
   searchTerm?: string;
 }
 
@@ -26,6 +27,7 @@ export function KanbanColumn({
   onDeleteTask,
   onUpdatePriority,
   onAddSubtask,
+  onGenerateShareLink,
   searchTerm
 }: KanbanColumnProps) {
   // const { setNodeRef } = useDroppable({ id: status }); // For DND
@@ -38,7 +40,7 @@ export function KanbanColumn({
       <h2 className="text-lg font-semibold text-primary sticky top-0 bg-muted/50 py-2 -my-2 z-10">
         {status} ({tasks.length})
       </h2>
-      <div className="space-y-3 overflow-y-auto flex-grow" style={{maxHeight: 'calc(100vh - 250px)'}}> {/* Adjust max height as needed */}
+      <div className="space-y-3 overflow-y-auto flex-grow" style={{maxHeight: 'calc(100vh - 250px)'}}>
         {/* <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}> */}
           {tasks.length === 0 && (
             <p className="text-sm text-muted-foreground text-center py-4">No tasks in this stage.</p>
@@ -52,6 +54,7 @@ export function KanbanColumn({
               onDeleteTask={onDeleteTask}
               onUpdatePriority={onUpdatePriority}
               onAddSubtask={onAddSubtask}
+              onGenerateShareLink={onGenerateShareLink}
               searchTerm={searchTerm}
             />
           ))}

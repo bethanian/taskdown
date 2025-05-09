@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task, Priority, Attachment } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
-import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
+import type { useTasks } from '@/hooks/useTasks'; 
 import { Skeleton } from '@/components/ui/skeleton';
 import { Card } from '@/components/ui/card';
 import Image from 'next/image';
@@ -34,7 +34,8 @@ interface ChecklistViewProps {
   addSubtask: ReturnType<typeof useTasks>['addSubtask'];
   setTasks: ReturnType<typeof useTasks>['setTasks']; 
   saveTasks: ReturnType<typeof useTasks>['saveTasks'];
-  searchTerm?: string; // Added searchTerm prop
+  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink'];
+  searchTerm?: string;
 }
 
 export function ChecklistView({ 
@@ -47,7 +48,8 @@ export function ChecklistView({
   addSubtask,
   setTasks, 
   saveTasks,
-  searchTerm, // Added searchTerm prop
+  onGenerateShareLink,
+  searchTerm,
 }: ChecklistViewProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -70,9 +72,11 @@ export function ChecklistView({
     newTags: string[], 
     newPriority: Priority,
     newNotes: string,
-    newAttachments: Attachment[]
+    newAttachments: Attachment[],
+    newStatus: TaskStatus,
+    newAssignedTo: string | undefined
   ) => {
-    editTask(id, newText, newTags, newPriority, newNotes, newAttachments);
+    editTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -86,15 +90,6 @@ export function ChecklistView({
 
       if (oldIndex !== -1 && newIndex !== -1) {
         const reorderedDisplayedTasks = arrayMove(tasks, oldIndex, newIndex);
-        
-        // If search or filters are active, reordering the displayed 'tasks' (which are filtered)
-        // might not map correctly to the original full task list.
-        // This is a complex problem. For now, we assume that if DND is used,
-        // the parent component (TaskdownPage) expects `setTasks` to update the source of truth
-        // based on the currently displayed (and reordered) items.
-        // This might lead to unexpected behavior if DND reordering is done on a heavily filtered list
-        // without a more sophisticated mapping back to the original data structure.
-        // The current `useTasks` `setTasks` replaces the entire list.
         setTasks(reorderedDisplayedTasks); 
         saveTasks(reorderedDisplayedTasks); 
       }
@@ -118,7 +113,7 @@ export function ChecklistView({
     );
   }
 
-  if (tasks.length === 0 && !searchTerm) { // Only show "No tasks yet" if not searching
+  if (tasks.length === 0 && !searchTerm) { 
     return (
       <div className="text-center py-10 text-muted-foreground flex flex-col items-center">
         <Image src="https://picsum.photos/seed/empty/300/200" alt="Empty checklist" width={300} height={200} className="rounded-lg mb-4 shadow-md" data-ai-hint="empty illustration" />
@@ -127,7 +122,7 @@ export function ChecklistView({
     );
   }
 
-  if (tasks.length === 0 && searchTerm) { // Show "No results" if searching and no tasks match
+  if (tasks.length === 0 && searchTerm) { 
      return (
       <div className="text-center py-10 text-muted-foreground flex flex-col items-center">
         <Image src="https://picsum.photos/seed/noresults/300/200" alt="No results found" width={300} height={200} className="rounded-lg mb-4 shadow-md" data-ai-hint="no results" />
@@ -158,8 +153,9 @@ export function ChecklistView({
               onEdit={handleEdit}
               onUpdatePriority={updateTaskPriority}
               onAddSubtask={addSubtask}
+              onGenerateShareLink={onGenerateShareLink}
               depth={0} 
-              searchTerm={searchTerm} // Pass searchTerm
+              searchTerm={searchTerm}
             />
           ))}
         </div>

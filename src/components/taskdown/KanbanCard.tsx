@@ -5,7 +5,7 @@ import type { Task, Priority } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Edit3, Trash2, TagIcon, Flag, FlagOff, Plus, FileText, Paperclip, LinkIcon, CheckCircle, Circle } from 'lucide-react';
+import { Edit3, Trash2, TagIcon, FlagIcon, FlagOff, Plus, FileText, Paperclip, LinkIcon, CheckCircle, Circle, User, Share2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from '@/components/ui/progress';
@@ -20,14 +20,15 @@ interface KanbanCardProps {
   onToggleComplete: (id: string) => void;
   onDeleteTask: (id: string) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
-  onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void; // Keep for consistency if actions are added
+  onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
+  onGenerateShareLink: (taskId: string) => Promise<string | null>;
   searchTerm?: string;
 }
 
 const priorityConfig: Record<Priority, { label: string; iconClassName: string; badgeVariant: "default" | "secondary" | "destructive" | "outline" }> = {
   high: { label: 'High', iconClassName: 'text-red-500', badgeVariant: 'destructive' },
-  medium: { label: 'Medium', iconClassName: 'text-yellow-500', badgeVariant: 'secondary' }, // Using secondary for yellow-ish
-  low: { label: 'Low', iconClassName: 'text-blue-500', badgeVariant: 'default' }, // Using default for blue-ish
+  medium: { label: 'Medium', iconClassName: 'text-yellow-500', badgeVariant: 'secondary' }, 
+  low: { label: 'Low', iconClassName: 'text-blue-500', badgeVariant: 'default' }, 
   none: { label: 'No Priority', iconClassName: 'text-muted-foreground', badgeVariant: 'outline' },
 };
 
@@ -46,8 +47,9 @@ export function KanbanCard({
   onEditTask, 
   onToggleComplete,
   onDeleteTask,
-  onUpdatePriority, // This might be better handled in the edit dialog for Kanban card
+  // onUpdatePriority, // This might be better handled in the edit dialog for Kanban card
   // onAddSubtask, // Subtask adding might be complex for a small card, better in edit dialog
+  onGenerateShareLink,
   searchTerm 
 }: KanbanCardProps) {
   // const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id }); // For DND
@@ -93,7 +95,7 @@ export function KanbanCard({
                 <HighlightedText text={task.text} highlight={searchTerm} />
               </CardTitle>
             </div>
-            <div className="flex gap-1 shrink-0">
+            <div className="flex gap-0.5 shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={() => onEditTask(task)} className="h-7 w-7">
@@ -101,6 +103,14 @@ export function KanbanCard({
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>Edit Task</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button variant="ghost" size="icon" onClick={() => onGenerateShareLink(task.id)} className="h-7 w-7">
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Share Task (copy link)</TooltipContent>
                 </Tooltip>
                  <Tooltip>
                   <TooltipTrigger asChild>
@@ -115,27 +125,36 @@ export function KanbanCard({
         </CardHeader>
         <CardContent className="p-3 pt-0 space-y-2">
           
-          {(task.priority !== 'none' || (task.tags && task.tags.length > 0)) && (
-            <div className="flex flex-wrap gap-1 items-center">
-              {task.priority !== 'none' && (
+          <div className="flex flex-wrap gap-1 items-center">
+            {task.priority !== 'none' && (
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge variant={currentPriorityConfig.badgeVariant} className="text-xs py-0.5 px-1.5">
+                    <FlagIcon className={`h-3 w-3 mr-1 ${currentPriorityConfig.iconClassName}`} />
+                    {currentPriorityConfig.label}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>Priority: {currentPriorityConfig.label}</TooltipContent>
+              </Tooltip>
+            )}
+            {task.tags.map(tag => (
+              <Badge key={tag} variant="secondary" className="text-xs py-0.5 px-1.5">
+                <TagIcon className="h-3 w-3 mr-1" />
+                <HighlightedText text={tag} highlight={searchTerm} />
+              </Badge>
+            ))}
+             {task.assignedTo && (
                 <Tooltip>
                   <TooltipTrigger>
-                    <Badge variant={currentPriorityConfig.badgeVariant} className="text-xs py-0.5 px-1.5">
-                      <Flag className={`h-3 w-3 mr-1 ${currentPriorityConfig.iconClassName}`} />
-                      {currentPriorityConfig.label}
+                    <Badge variant="outline" className="text-xs py-0.5 px-1.5 flex items-center">
+                      <User className="h-3 w-3 mr-1 text-muted-foreground" />
+                       <HighlightedText text={task.assignedTo} highlight={searchTerm} />
                     </Badge>
                   </TooltipTrigger>
-                  <TooltipContent>Priority: {currentPriorityConfig.label}</TooltipContent>
+                  <TooltipContent>Assigned to: {task.assignedTo}</TooltipContent>
                 </Tooltip>
               )}
-              {task.tags.map(tag => (
-                <Badge key={tag} variant="secondary" className="text-xs py-0.5 px-1.5">
-                  <TagIcon className="h-3 w-3 mr-1" />
-                  <HighlightedText text={tag} highlight={searchTerm} />
-                </Badge>
-              ))}
-            </div>
-          )}
+          </div>
 
           {hasNotes && (
              <Tooltip>

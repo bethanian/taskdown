@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import type { Task, TaskStatus, Priority, Attachment } from '@/lib/types';
 import { TASK_STATUS_OPTIONS } from '@/lib/types';
 import { KanbanColumn } from './KanbanColumn';
-import { EditTaskDialog } from './EditTaskDialog'; // To reuse for editing tasks
+import { EditTaskDialog } from './EditTaskDialog'; 
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 // import { DndContext, closestCenter } from '@dnd-kit/core'; // For future DND
@@ -12,12 +12,13 @@ import Image from 'next/image';
 interface KanbanViewProps {
   tasks: Task[];
   isLoading: boolean;
-  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus) => void;
+  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined) => void;
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
   onToggleComplete: (id: string) => void;
   onDeleteTask: (id: string) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
   onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
+  onGenerateShareLink: (taskId: string) => Promise<string | null>;
   searchTerm?: string;
 }
 
@@ -30,6 +31,7 @@ export function KanbanView({
   onDeleteTask,
   onUpdatePriority,
   onAddSubtask,
+  onGenerateShareLink,
   searchTerm
 }: KanbanViewProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -47,9 +49,10 @@ export function KanbanView({
     newPriority: Priority,
     newNotes: string,
     newAttachments: Attachment[],
-    newStatus: TaskStatus
+    newStatus: TaskStatus,
+    newAssignedTo: string | undefined
   ) => {
-    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus);
+    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -89,9 +92,8 @@ export function KanbanView({
     );
   }
 
-  // Group tasks by status
   const tasksByStatus = tasks.reduce((acc, task) => {
-    const status = task.status || TASK_STATUS_OPTIONS[0]; // Default to first status if undefined
+    const status = task.status || TASK_STATUS_OPTIONS[0]; 
     if (!acc[status]) {
       acc[status] = [];
     }
@@ -100,7 +102,6 @@ export function KanbanView({
   }, {} as Record<TaskStatus, Task[]>);
 
   return (
-    // DndContext will wrap this for drag and drop later
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
       {TASK_STATUS_OPTIONS.map(status => (
         <KanbanColumn
@@ -113,6 +114,7 @@ export function KanbanView({
           onDeleteTask={onDeleteTask}
           onUpdatePriority={onUpdatePriority}
           onAddSubtask={onAddSubtask}
+          onGenerateShareLink={onGenerateShareLink}
           searchTerm={searchTerm}
         />
       ))}

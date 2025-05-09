@@ -24,6 +24,8 @@ export interface Task {
   subtasks?: Task[]; // Optional array for nested subtasks
   notes?: string; // Optional multiline text notes
   attachments?: Attachment[]; // Optional array of attachments
+  assignedTo?: string; // Optional: name or ID of the person the task is assigned to
+  shareId?: string; // Optional: unique ID for generating a shareable link
 }
 
 export type Tag = string;

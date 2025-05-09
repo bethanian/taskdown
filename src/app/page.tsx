@@ -4,13 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/taskdown/Header';
 import { NewTaskForm } from '@/components/taskdown/NewTaskForm';
 import { ChecklistView } from '@/components/taskdown/ChecklistView';
-import { KanbanView } from '@/components/taskdown/KanbanView'; // Added KanbanView
+import { KanbanView } from '@/components/taskdown/KanbanView'; 
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
 import type { Task } from '@/lib/types';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs
-import { List, LayoutGrid } from 'lucide-react'; // Added icons for view toggle
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
+import { List, LayoutGrid } from 'lucide-react'; 
 
 export default function TaskdownPage() {
   const { 
@@ -22,7 +22,9 @@ export default function TaskdownPage() {
     deleteTask, 
     editTask, 
     updateTaskPriority,
-    updateTaskStatus, // Added updateTaskStatus
+    updateTaskStatus,
+    assignTask, // Added assignTask
+    generateShareLink, // Added generateShareLink
     setTasks, 
     saveTasks 
   } = useTasks();
@@ -30,7 +32,7 @@ export default function TaskdownPage() {
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
   const [rawSearchTerm, setRawSearchTerm] = useState(''); 
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [activeView, setActiveView] = useState<'list' | 'kanban'>('list'); // Added activeView state
+  const [activeView, setActiveView] = useState<'list' | 'kanban'>('list');
 
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -64,7 +66,8 @@ export default function TaskdownPage() {
           const taskTextMatchesSearch = searchTerm === '' || task.text.toLowerCase().includes(searchTerm);
           const taskNotesMatchesSearch = searchTerm === '' || (task.notes && task.notes.toLowerCase().includes(searchTerm));
           const taskTagsMatchSearch = searchTerm === '' || task.tags.some(tag => tag.toLowerCase().includes(searchTerm));
-          const taskItselfMatchesSearch = taskTextMatchesSearch || taskNotesMatchesSearch || taskTagsMatchSearch;
+          const taskAssignedToMatchesSearch = searchTerm === '' || (task.assignedTo && task.assignedTo.toLowerCase().includes(searchTerm));
+          const taskItselfMatchesSearch = taskTextMatchesSearch || taskNotesMatchesSearch || taskTagsMatchSearch || taskAssignedToMatchesSearch;
           
           const taskItselfMatchesTags = activeTagFilters.length === 0 || 
             task.tags.some(tag => activeTagFilters.includes(tag.toLowerCase()));
@@ -74,7 +77,7 @@ export default function TaskdownPage() {
           if (taskItselfIsKept || filteredSubtasks.length > 0) {
             return {
               ...task,
-              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], searchTerm) : []) : filteredSubtasks, // Note: subtask filtering for tags might need to be adjusted based on desired behavior. Currently filtering subtasks without active tag filters if parent matches.
+              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], searchTerm) : []) : filteredSubtasks, 
             };
           }
           return null;
@@ -88,7 +91,7 @@ export default function TaskdownPage() {
 
 
   return (
-    <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col"> {/* Increased max-width for Kanban */}
+    <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
       <Header />
       <div className="my-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="w-full sm:w-auto flex-grow">
@@ -131,18 +134,20 @@ export default function TaskdownPage() {
             setTasks={setTasks}
             saveTasks={saveTasks}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
+            onGenerateShareLink={generateShareLink} // Pass down
           />
         )}
         {activeView === 'kanban' && (
           <KanbanView
-            tasks={filteredTasks} // Pass filtered tasks for consistency with search/tag filters
+            tasks={filteredTasks} 
             isLoading={isLoading}
-            onEditTask={editTask} // For editing via modal from Kanban card
-            onUpdateTaskStatus={updateTaskStatus} // For DND status changes later
+            onEditTask={editTask} 
+            onUpdateTaskStatus={updateTaskStatus} 
             onToggleComplete={toggleTaskCompletion}
             onDeleteTask={deleteTask}
             onUpdatePriority={updateTaskPriority}
             onAddSubtask={addSubtask}
+            onGenerateShareLink={generateShareLink} // Pass down
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
           />
         )}

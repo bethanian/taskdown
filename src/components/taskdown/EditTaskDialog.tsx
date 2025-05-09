@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon, Flag, FlagOff, LinkIcon, Paperclip, ListChecks } from 'lucide-react';
+import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -37,7 +37,8 @@ interface EditTaskDialogProps {
     newPriority: Priority,
     newNotes: string,
     newAttachments: Attachment[],
-    newStatus: TaskStatus // Added newStatus
+    newStatus: TaskStatus,
+    newAssignedTo: string | undefined
   ) => void;
 }
 
@@ -66,7 +67,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [currentAttachmentUrlInput, setCurrentAttachmentUrlInput] = useState('');
   const [currentAttachmentNameInput, setCurrentAttachmentNameInput] = useState('');
-  const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS); // Added status state
+  const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS);
+  const [assignedTo, setAssignedTo] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (task) {
@@ -75,7 +77,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setPriority(task.priority || 'none');
       setNotes(task.notes || '');
       setAttachments(task.attachments || []);
-      setStatus(task.status || DEFAULT_TASK_STATUS); // Initialize status
+      setStatus(task.status || DEFAULT_TASK_STATUS);
+      setAssignedTo(task.assignedTo || undefined);
       setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
@@ -84,7 +87,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
   const handleSave = () => {
     if (task) {
-      onSave(task.id, text, tags, priority, notes, attachments, status); // Pass status to onSave
+      onSave(task.id, text, tags, priority, notes, attachments, status, assignedTo);
       onOpenChange(false);
     }
   };
@@ -177,7 +180,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
                 {TASK_STATUS_OPTIONS.map(s => (
                   <SelectItem key={s} value={s}>
                     <div className="flex items-center">
-                       <ListChecks className="h-4 w-4 mr-2 text-muted-foreground" /> {/* Placeholder icon */}
+                       <ListChecks className="h-4 w-4 mr-2 text-muted-foreground" />
                       {s}
                     </div>
                   </SelectItem>
@@ -202,7 +205,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
                       {p === 'none' ? (
                         <FlagOff className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
                       ) : (
-                        <Flag className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
+                        <FlagIcon className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
                       )}
                       {priorityConfig[p].label}
                     </div>
@@ -210,6 +213,23 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Assigned To */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-task-assignedTo" className="text-right col-span-1">
+              Assigned To
+            </Label>
+            <div className="col-span-3 flex items-center gap-2">
+              <User className="h-4 w-4 text-muted-foreground"/>
+              <Input
+                id="edit-task-assignedTo"
+                value={assignedTo || ''}
+                onChange={(e) => setAssignedTo(e.target.value.trim() ? e.target.value : undefined)}
+                placeholder="Assignee name"
+                className="flex-grow"
+              />
+            </div>
           </div>
 
           {/* Tags */}

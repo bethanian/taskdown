@@ -6,12 +6,12 @@ import type { Task, Priority, Attachment } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, Flag, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2 } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Progress } from '@/components/ui/progress'; // Added Progress
+import { Progress } from '@/components/ui/progress'; 
 import {
   Accordion,
   AccordionContent,
@@ -38,6 +38,7 @@ interface ChecklistItemProps {
   onEdit: (task: Task) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
   onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
+  onGenerateShareLink: (taskId: string) => Promise<string | null>;
   depth?: number;
   searchTerm?: string;
 }
@@ -65,6 +66,7 @@ export function ChecklistItem({
   onEdit, 
   onUpdatePriority,
   onAddSubtask,
+  onGenerateShareLink,
   depth = 0,
   searchTerm,
 }: ChecklistItemProps) {
@@ -148,7 +150,7 @@ export function ChecklistItem({
                       {task.priority === 'none' || !task.priority ? (
                         <FlagOff className={`h-4 w-4 ${currentPriorityConfig.iconClassName}`} />
                       ) : (
-                        <Flag className={`h-4 w-4 ${currentPriorityConfig.iconClassName}`} />
+                        <FlagIcon className={`h-4 w-4 ${currentPriorityConfig.iconClassName}`} />
                       )}
                       <span className="sr-only">Set priority: {currentPriorityConfig.label}</span>
                     </Button>
@@ -170,7 +172,7 @@ export function ChecklistItem({
                     {p === 'none' ? (
                       <FlagOff className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
                     ) : (
-                      <Flag className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
+                      <FlagIcon className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
                     )}
                     {priorityConfig[p].label}
                     {(task.priority || 'none') === p && <Check className="ml-auto h-4 w-4" />}
@@ -206,16 +208,25 @@ export function ChecklistItem({
                   </Tooltip>
                 )}
               </div>
-              {task.tags && task.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {task.tags.map(tag => (
-                    <Badge key={tag} variant="secondary" className="text-xs">
-                      <TagIcon className="h-3 w-3 mr-1" />
-                      <HighlightedText text={tag} highlight={searchTerm} />
-                    </Badge>
-                  ))}
-                </div>
-              )}
+              <div className="flex flex-wrap gap-1 mt-1 items-center">
+                {task.tags && task.tags.length > 0 && task.tags.map(tag => (
+                  <Badge key={tag} variant="secondary" className="text-xs">
+                    <TagIcon className="h-3 w-3 mr-1" />
+                    <HighlightedText text={tag} highlight={searchTerm} />
+                  </Badge>
+                ))}
+                {task.assignedTo && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="text-xs flex items-center">
+                        <User className="h-3 w-3 mr-1 text-muted-foreground" />
+                        <HighlightedText text={task.assignedTo} highlight={searchTerm} />
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>Assigned to: {task.assignedTo}</TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
             </div>
             
             <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
@@ -236,6 +247,15 @@ export function ChecklistItem({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>Add subtask</TooltipContent>
+              </Tooltip>
+               <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={() => onGenerateShareLink(task.id)} className="h-8 w-8">
+                    <Share2 className="h-4 w-4" />
+                    <span className="sr-only">Share task</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Share task (copy link)</TooltipContent>
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -286,6 +306,7 @@ export function ChecklistItem({
                           onEdit={onEdit}
                           onUpdatePriority={onUpdatePriority}
                           onAddSubtask={onAddSubtask}
+                          onGenerateShareLink={onGenerateShareLink}
                           depth={depth + 1}
                           searchTerm={searchTerm}
                         />

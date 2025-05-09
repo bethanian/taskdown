@@ -98,9 +98,11 @@ export function useTasks() {
       ...task,
       tags: task.tags || [],
       priority: task.priority || 'none',
-      status: task.status || DEFAULT_TASK_STATUS, // Ensure status is loaded or defaulted
+      status: task.status || DEFAULT_TASK_STATUS, 
       notes: task.notes || '',
       attachments: task.attachments || [],
+      assignedTo: task.assignedTo || undefined,
+      shareId: task.shareId || undefined,
       subtasks: task.subtasks ? loadTasksRecursive(task.subtasks) : [],
     }));
   };
@@ -150,12 +152,14 @@ export function useTasks() {
       completed: false,
       tags: [],
       priority: 'none',
-      status: DEFAULT_TASK_STATUS, // Initialize status
+      status: DEFAULT_TASK_STATUS,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
       notes: '',
       attachments: [],
+      assignedTo: undefined,
+      shareId: undefined,
     };
     const updatedTasks = [newTask, ...tasks];
     setTasks(updatedTasks);
@@ -174,12 +178,14 @@ export function useTasks() {
       completed: false,
       tags,
       priority,
-      status: DEFAULT_TASK_STATUS, // Initialize status for subtask
+      status: DEFAULT_TASK_STATUS,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
       notes: '',
       attachments: [],
+      assignedTo: undefined,
+      shareId: undefined,
     };
     const updatedTasks = addSubtaskRecursive(tasks, parentId, newSubtask);
     setTasks(updatedTasks);
@@ -193,7 +199,7 @@ export function useTasks() {
       return {
         ...task,
         completed: newCompletedStatus,
-        status: newCompletedStatus ? 'Done' : (task.status === 'Done' ? DEFAULT_TASK_STATUS : task.status), // Update status based on completion
+        status: newCompletedStatus ? 'Done' : (task.status === 'Done' ? DEFAULT_TASK_STATUS : task.status),
         updatedAt: Date.now(),
         subtasks: updateSubtasksCompletion(task.subtasks, newCompletedStatus),
       };
@@ -215,9 +221,10 @@ export function useTasks() {
     newText: string, 
     newTags: string[], 
     newPriority: Priority,
-    newNotes: string, // Not optional here, pass existing if not changed
-    newAttachments: Attachment[], // Not optional, pass existing
-    newStatus: TaskStatus // Add newStatus
+    newNotes: string,
+    newAttachments: Attachment[],
+    newStatus: TaskStatus,
+    newAssignedTo: string | undefined
   ) => {
     if (!newText.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
@@ -230,8 +237,9 @@ export function useTasks() {
       priority: newPriority,
       notes: newNotes,
       attachments: newAttachments,
-      status: newStatus, // Update status
-      completed: newStatus === 'Done' ? true : (newStatus !== 'Done' && task.completed ? false : task.completed), // Sync completed with Done status
+      status: newStatus,
+      assignedTo: newAssignedTo,
+      completed: newStatus === 'Done' ? true : (newStatus !== 'Done' && task.completed ? false : task.completed),
       updatedAt: Date.now(),
     });
     const updatedTasks = mapTasksRecursively(tasks, id, updateFn);
@@ -253,13 +261,64 @@ export function useTasks() {
     const updateFn = (task: Task): Task => ({ 
       ...task, 
       status: newStatus,
-      completed: newStatus === 'Done', // Sync completed state
+      completed: newStatus === 'Done', 
       updatedAt: Date.now() 
     });
     const updatedTasks = mapTasksRecursively(tasks, id, updateFn);
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
     toast({ title: "Success", description: `Task status set to ${newStatus}.`});
+  }, [tasks, saveTasks, toast]);
+
+  const assignTask = useCallback((id: string, assignee: string | undefined) => {
+    const updateFn = (task: Task): Task => ({ ...task, assignedTo: assignee, updatedAt: Date.now() });
+    const updatedTasks = mapTasksRecursively(tasks, id, updateFn);
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+    if (assignee) {
+      toast({ title: "Success", description: `Task assigned to ${assignee}.` });
+    } else {
+      toast({ title: "Success", description: "Task unassigned." });
+    }
+  }, [tasks, saveTasks, toast]);
+
+  const generateShareLink = useCallback(async (taskId: string): Promise<string | null> => {
+    let taskToShare: Task | null = null;
+    let newShareId = '';
+
+    const findAndUpdateTask = (currentTasks: Task[]): Task[] => {
+      return currentTasks.map(t => {
+        if (t.id === taskId) {
+          newShareId = t.shareId || crypto.randomUUID();
+          taskToShare = { ...t, shareId: newShareId };
+          return taskToShare;
+        }
+        if (t.subtasks && t.subtasks.length > 0) {
+          return { ...t, subtasks: findAndUpdateTask(t.subtasks) };
+        }
+        return t;
+      });
+    };
+    
+    const updatedTasks = findAndUpdateTask(tasks);
+
+    if (taskToShare) {
+      setTasks(updatedTasks);
+      await saveTasks(updatedTasks);
+      const baseUrl = window.location.origin;
+      const link = `${baseUrl}/share/task/${newShareId}`; // This route doesn't exist yet
+      
+      try {
+        await navigator.clipboard.writeText(link);
+        toast({ title: "Link Copied!", description: "Shareable link copied to clipboard." });
+      } catch (err) {
+        toast({ title: "Error", description: "Could not copy link to clipboard.", variant: "destructive"});
+        console.error('Failed to copy: ', err);
+      }
+      return link;
+    }
+    toast({ title: "Error", description: "Task not found for sharing.", variant: "destructive"});
+    return null;
   }, [tasks, saveTasks, toast]);
 
 
@@ -272,7 +331,9 @@ export function useTasks() {
     deleteTask,
     editTask,
     updateTaskPriority,
-    updateTaskStatus, // Expose new function
+    updateTaskStatus,
+    assignTask,
+    generateShareLink,
     setTasks, 
     saveTasks, 
   };
