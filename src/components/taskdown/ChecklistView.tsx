@@ -6,6 +6,7 @@ import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
 import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
 import { Skeleton } from '@/components/ui/skeleton';
+import { Card } from '@/components/ui/card'; // Added import
 import Image from 'next/image';
 
 interface ChecklistViewProps {
