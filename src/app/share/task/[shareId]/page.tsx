@@ -2,29 +2,32 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { useTasks } from '@/hooks/useTasks'; // Assuming useTasks can be used to fetch all tasks
+// import { useTasks } from '@/hooks/useTasks'; // We will fetch directly for shared tasks
 import type { Task, Attachment } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, TagIcon, FlagIcon, CalendarDays, User, Paperclip, LinkIcon, CheckCircle, Circle, ListChecks, FileText } from 'lucide-react';
+import { ArrowLeft, TagIcon, FlagIcon, CalendarDays, User, Paperclip, LinkIcon, CheckCircle, Circle, ListChecks, FileText, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
-import { Header } from '@/components/taskdown/Header'; // Re-use existing header
+import { Header } from '@/components/taskdown/Header';
 import { MarkdownWithHighlight } from '@/components/taskdown/MarkdownWithHighlight';
+import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants'; // For temporary local check
+import localforage from 'localforage'; // For temporary local check
 
 // Helper to find a task by shareId recursively
+// This helper would ideally not be needed here if backend fetches specific task
 const findTaskByShareIdRecursive = (
   tasksToSearch: Task[],
-  shareId: string
+  shareIdToFind: string
 ): Task | null => {
   for (const task of tasksToSearch) {
-    if (task.shareId === shareId) {
+    if (task.shareId === shareIdToFind) {
       return task;
     }
     if (task.subtasks && task.subtasks.length > 0) {
-      const foundInSubtasks = findTaskByShareIdRecursive(task.subtasks, shareId);
+      const foundInSubtasks = findTaskByShareIdRecursive(task.subtasks, shareIdToFind);
       if (foundInSubtasks) {
         return foundInSubtasks;
       }
@@ -83,7 +86,6 @@ function SharedTaskDueDate({ dueDateTimestamp, completed }: { dueDateTimestamp?:
   );
 }
 
-
 function SharedTaskDisplay({ task }: { task: Task }) {
   const priorityInfo = priorityConfigDisplay[task.priority || 'none'];
   
@@ -124,7 +126,7 @@ function SharedTaskDisplay({ task }: { task: Task }) {
         </div>
         <CardTitle className="text-2xl font-bold break-words">{task.text}</CardTitle>
         <CardDescription>
-          Shared on: {format(new Date(task.updatedAt), "PPP p")}
+          Task details (shared view)
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -239,55 +241,75 @@ function SharedTaskDisplay({ task }: { task: Task }) {
   );
 }
 
-
 export default function ShareTaskPage() {
   const params = useParams();
   const shareId = params.shareId as string;
-  const { tasks, isLoading: tasksLoading } = useTasks(); // Get all tasks
   const [sharedTask, setSharedTask] = useState<Task | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shareId || tasksLoading) {
-      return; // Wait for shareId and tasks to be available
+    if (!shareId) {
+        setLoading(false);
+        setError("Invalid share link: No Share ID provided.");
+        return;
     }
     
     setLoading(true);
     setError(null);
 
-    const foundTask = findTaskByShareIdRecursive(tasks, shareId);
+    async function fetchSharedTask() {
+      try {
+        // THIS IS A TEMPORARY LOCAL CHECK AND WILL NOT WORK FOR OTHER USERS.
+        // Replace this with a backend API call to fetch the task by shareId.
+        console.log(`Attempting to find task with shareId: ${shareId} locally.`);
+        const allTasks = await localforage.getItem<Task[]>(LOCALSTORAGE_TASKS_KEY);
 
-    if (foundTask) {
-      setSharedTask(foundTask);
-    } else {
-      setError("Shared task not found or access is denied. This link may be invalid or the task may have been deleted.");
+        if (allTasks) {
+          const foundTask = findTaskByShareIdRecursive(allTasks, shareId);
+          if (foundTask) {
+            setSharedTask(foundTask);
+          } else {
+            setError(
+              "Shared task not found. This link may be invalid, the task may have been deleted, or it's not accessible to you."
+            );
+          }
+        } else {
+          setError("No tasks found in your local storage. Cannot verify shared link.");
+        }
+      } catch (e: any) {
+        console.error("Error fetching shared task (locally):", e);
+        setError(e.message || "An error occurred while trying to load the shared task.");
+      } finally {
+        setLoading(false);
+      }
     }
-    setLoading(false);
-  }, [shareId, tasks, tasksLoading]);
+
+    fetchSharedTask();
+  }, [shareId]);
 
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
-      <Header /> {/* Consider if you want the full header or a simplified one */}
+      <Header />
       <main className="flex-grow mt-8">
         {loading && (
-          <div className="text-center">
+          <div className="text-center py-10">
+            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
             <p className="text-lg text-muted-foreground">Loading shared task...</p>
-            {/* Add a spinner or skeleton loader here if desired */}
           </div>
         )}
         {error && (
-          <Card className="w-full max-w-md mx-auto bg-destructive/10 border-destructive">
+          <Card className="w-full max-w-lg mx-auto bg-destructive/10 border-destructive">
             <CardHeader>
-              <CardTitle className="text-destructive">Error</CardTitle>
+              <CardTitle className="text-destructive text-xl">Error Loading Task</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-destructive-foreground">{error}</p>
-              <Link href="/" passHref>
-                <Button variant="link" className="mt-4 px-0 text-destructive-foreground">
-                  Go to Homepage
-                </Button>
-              </Link>
+            <CardContent className="space-y-3">
+              <p className="text-destructive-foreground text-sm">{error}</p>
+              <Button asChild variant="ghost" className="text-destructive-foreground hover:bg-destructive/20">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -295,17 +317,21 @@ export default function ShareTaskPage() {
           <SharedTaskDisplay task={sharedTask} />
         )}
         {!loading && !error && !sharedTask && (
-           <Card className="w-full max-w-md mx-auto">
+           // This state might be briefly visible if localforage is empty and then error is set.
+           // The error message for 'foundTask' being null covers this better.
+           <Card className="w-full max-w-lg mx-auto">
             <CardHeader>
-              <CardTitle>Task Not Found</CardTitle>
+              <CardTitle className="text-xl">Task Not Found</CardTitle>
             </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground">The shared task could not be loaded. It might have been deleted or the link is incorrect.</p>
-               <Link href="/" passHref>
-                <Button variant="link" className="mt-4 px-0">
-                  Go to Homepage
-                </Button>
-              </Link>
+            <CardContent className="space-y-3">
+              <p className="text-muted-foreground text-sm">
+                The shared task could not be loaded. It might have been deleted or the link is incorrect.
+              </p>
+              <Button asChild variant="link" className="px-0">
+                <Link href="/">
+                  <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
+                </Link>
+              </Button>
             </CardContent>
           </Card>
         )}
