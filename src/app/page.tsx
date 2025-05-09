@@ -10,7 +10,10 @@ import { TagFilter } from '@/components/taskdown/TagFilter';
 import type { Task } from '@/lib/types';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
-import { List, LayoutGrid } from 'lucide-react'; 
+import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
+import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
+import { processTaskInput, type ProcessTaskInput, type ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
+
 
 export default function TaskdownPage() {
   const { 
@@ -23,10 +26,11 @@ export default function TaskdownPage() {
     editTask, 
     updateTaskPriority,
     updateTaskStatus,
-    assignTask, // Added assignTask
-    generateShareLink, // Added generateShareLink
+    assignTask,
+    generateShareLink,
     setTasks, 
-    saveTasks 
+    saveTasks,
+    applyAiTaskOperations,
   } = useTasks();
 
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
@@ -89,6 +93,20 @@ export default function TaskdownPage() {
 
   }, [tasks, activeFilters, debouncedSearchTerm]);
 
+  const handleAiProcessTasks = async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
+    try {
+      const output = await processTaskInput(input);
+      if (output) {
+        await applyAiTaskOperations(output);
+      }
+      return output;
+    } catch (e) {
+      console.error("Error processing AI tasks in page:", e);
+      // Toasting is handled in AiTaskInputForm or applyAiTaskOperations
+      return null;
+    }
+  };
+
 
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
@@ -116,6 +134,16 @@ export default function TaskdownPage() {
            <h2 className="text-xl font-semibold mb-3 text-primary">Add New Task</h2>
           <NewTaskForm addTask={addTask} />
         </div>
+
+        <div className="mb-6 p-6 bg-card rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-3 text-primary flex items-center">
+            <Sparkles className="h-5 w-5 mr-2 text-primary" /> AI Task Assistant
+          </h2>
+          <p className="text-sm text-muted-foreground mb-3">
+            Try: "Create Design phase with subtasks: Sketches, Wireframes. Add task: Call John. Remove: Old team meeting."
+          </p>
+          <AiTaskInputForm onProcessTasks={handleAiProcessTasks} disabled={isLoading} />
+        </div>
         
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3 text-primary">Filter by Tags</h2>
@@ -134,7 +162,7 @@ export default function TaskdownPage() {
             setTasks={setTasks}
             saveTasks={saveTasks}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
-            onGenerateShareLink={generateShareLink} // Pass down
+            onGenerateShareLink={generateShareLink}
           />
         )}
         {activeView === 'kanban' && (
@@ -147,7 +175,7 @@ export default function TaskdownPage() {
             onDeleteTask={deleteTask}
             onUpdatePriority={updateTaskPriority}
             onAddSubtask={addSubtask}
-            onGenerateShareLink={generateShareLink} // Pass down
+            onGenerateShareLink={generateShareLink}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
           />
         )}

@@ -6,6 +6,8 @@ import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_TASK_STATUS } from '@/lib/types';
+import type { ProcessTaskOutput, ProcessedTask } from '@/ai/flows/process-task-input-flow';
+
 
 localforage.config({
   name: 'TaskdownDB',
@@ -87,6 +89,26 @@ const updateSubtasksCompletion = (subtasks: Task[] | undefined, completed: boole
   }));
 };
 
+// Helper to find a task by text (and its ID) recursively for deletion or parent lookup
+const findTaskByTextRecursive = (
+  tasksToSearch: Task[],
+  searchText: string
+): Task | null => {
+  for (const task of tasksToSearch) {
+    // Case-insensitive and trim comparison
+    if (task.text.trim().toLowerCase() === searchText.trim().toLowerCase()) {
+      return task;
+    }
+    if (task.subtasks && task.subtasks.length > 0) {
+      const foundInSubtasks = findTaskByTextRecursive(task.subtasks, searchText);
+      if (foundInSubtasks) {
+        return foundInSubtasks;
+      }
+    }
+  }
+  return null;
+};
+
 
 export function useTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -141,10 +163,10 @@ export function useTasks() {
     }
   }, [toast]);
 
-  const addTask = useCallback((text: string) => {
+  // Core logic, no side effects (toast, setTasks, saveTasks)
+  const coreAddTask = (text: string, currentTasks: Task[]): { updatedTasks: Task[], newTaskId: string | null } => {
     if (!text.trim()) {
-      toast({ title: "Info", description: "Task text cannot be empty." });
-      return;
+      return { updatedTasks: currentTasks, newTaskId: null };
     }
     const newTask: Task = {
       id: crypto.randomUUID(),
@@ -161,16 +183,13 @@ export function useTasks() {
       assignedTo: undefined,
       shareId: undefined,
     };
-    const updatedTasks = [newTask, ...tasks];
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
-    toast({ title: "Success", description: "Task added." });
-  }, [tasks, saveTasks, toast]);
+    const updatedTasks = [newTask, ...currentTasks];
+    return { updatedTasks, newTaskId: newTask.id };
+  };
 
-  const addSubtask = useCallback((parentId: string, text: string, tags: string[] = [], priority: Priority = 'none') => {
+  const coreAddSubtask = (parentId: string, text: string, currentTasks: Task[], tags: string[] = [], priority: Priority = 'none'): Task[] => {
     if (!text.trim()) {
-      toast({ title: "Info", description: "Subtask text cannot be empty." });
-      return;
+      return currentTasks;
     }
     const newSubtask: Task = {
       id: crypto.randomUUID(),
@@ -187,11 +206,43 @@ export function useTasks() {
       assignedTo: undefined,
       shareId: undefined,
     };
-    const updatedTasks = addSubtaskRecursive(tasks, parentId, newSubtask);
+    return addSubtaskRecursive(currentTasks, parentId, newSubtask);
+  };
+  
+  const coreDeleteTask = (id: string, currentTasks: Task[]): Task[] => {
+    return filterTasksRecursively(currentTasks, id);
+  };
+
+  // Wrappers with side effects for single operations
+  const addTask = useCallback((text: string) => {
+    const { updatedTasks, newTaskId } = coreAddTask(text, tasks);
+    if (newTaskId) {
+      setTasks(updatedTasks);
+      saveTasks(updatedTasks);
+      toast({ title: "Success", description: "Task added." });
+    } else if (text.trim()) { // Only toast if text was not empty but still failed (e.g. validation)
+      toast({ title: "Info", description: "Task text cannot be empty." });
+    }
+  }, [tasks, saveTasks, toast]);
+
+  const addSubtask = useCallback((parentId: string, text: string, tags: string[] = [], priority: Priority = 'none') => {
+    const updatedTasks = coreAddSubtask(parentId, text, tasks, tags, priority);
+    if (updatedTasks !== tasks) { // Check if any change was made
+        setTasks(updatedTasks);
+        saveTasks(updatedTasks);
+        toast({ title: "Success", description: "Subtask added." });
+    } else if (text.trim()){
+        toast({ title: "Info", description: "Subtask text cannot be empty." });
+    }
+  }, [tasks, saveTasks, toast]);
+
+  const deleteTask = useCallback((id: string) => {
+    const updatedTasks = coreDeleteTask(id, tasks);
     setTasks(updatedTasks);
     saveTasks(updatedTasks);
-    toast({ title: "Success", description: "Subtask added." });
+    toast({ title: "Success", description: "Task deleted." });
   }, [tasks, saveTasks, toast]);
+
 
   const toggleTaskCompletion = useCallback((id: string) => {
     const updateFn = (task: Task): Task => {
@@ -209,13 +260,6 @@ export function useTasks() {
     saveTasks(updatedTasks);
   }, [tasks, saveTasks]);
   
-  const deleteTask = useCallback((id: string) => {
-    const updatedTasks = filterTasksRecursively(tasks, id);
-    setTasks(updatedTasks);
-    saveTasks(updatedTasks);
-    toast({ title: "Success", description: "Task deleted." });
-  }, [tasks, saveTasks, toast]);
-
   const editTask = useCallback((
     id: string, 
     newText: string, 
@@ -306,7 +350,7 @@ export function useTasks() {
       setTasks(updatedTasks);
       await saveTasks(updatedTasks);
       const baseUrl = window.location.origin;
-      const link = `${baseUrl}/share/task/${newShareId}`; // This route doesn't exist yet
+      const link = `${baseUrl}/share/task/${newShareId}`; 
       
       try {
         await navigator.clipboard.writeText(link);
@@ -321,14 +365,84 @@ export function useTasks() {
     return null;
   }, [tasks, saveTasks, toast]);
 
+  const applyAiTaskOperations = useCallback(async (operations: ProcessTaskOutput) => {
+    let currentTasksState = [...tasks]; // Operate on a copy
+    let changesMade = 0;
+    const parentTextToIdMap = new Map<string, string>();
+
+    // Process additions
+    // First pass: add top-level tasks and map their text to ID
+    for (const taskToAdd of operations.tasksToAdd.filter(t => !t.parentTaskText)) {
+      if (!taskToAdd.text.trim()) continue;
+      const { updatedTasks, newTaskId } = coreAddTask(taskToAdd.text, currentTasksState);
+      if (newTaskId) {
+        currentTasksState = updatedTasks;
+        parentTextToIdMap.set(taskToAdd.text, newTaskId); // Map original text from AI
+        changesMade++;
+      }
+    }
+
+    // Second pass: add subtasks
+    for (const taskToAdd of operations.tasksToAdd.filter(t => t.parentTaskText)) {
+      if (!taskToAdd.text.trim() || !taskToAdd.parentTaskText) continue;
+      
+      let parentId = parentTextToIdMap.get(taskToAdd.parentTaskText);
+      
+      if (!parentId) {
+        // If parent wasn't in *this batch* of top-level tasks, search existing tasks
+        const existingParentTask = findTaskByTextRecursive(currentTasksState, taskToAdd.parentTaskText);
+        if (existingParentTask) {
+          parentId = existingParentTask.id;
+        }
+      }
+
+      if (parentId) {
+        const prevLength = currentTasksState.flatMap(t => t.subtasks || []).length;
+        currentTasksState = coreAddSubtask(parentId, taskToAdd.text, currentTasksState);
+        const newLength = currentTasksState.flatMap(t => t.subtasks || []).length;
+        if (newLength > prevLength || currentTasksState.find(t=> t.id === parentId)?.subtasks?.find(st => st.text === taskToAdd.text) ) {
+            changesMade++;
+        }
+      } else {
+        console.warn(`Parent task "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level.`);
+        const { updatedTasks: newTopLevelTasks, newTaskId: newTopLevelId } = coreAddTask(taskToAdd.text, currentTasksState);
+        if (newTopLevelId) {
+          currentTasksState = newTopLevelTasks;
+          parentTextToIdMap.set(taskToAdd.text, newTopLevelId);
+          changesMade++;
+        }
+      }
+    }
+
+    // Process removals
+    for (const taskToRemove of operations.tasksToRemove) {
+      if (!taskToRemove.text.trim()) continue;
+      const taskToDelete = findTaskByTextRecursive(currentTasksState, taskToRemove.text);
+      if (taskToDelete) {
+        currentTasksState = coreDeleteTask(taskToDelete.id, currentTasksState);
+        changesMade++;
+      } else {
+        console.warn(`Task "${taskToRemove.text}" not found for removal.`);
+      }
+    }
+
+    if (changesMade > 0) {
+      setTasks(currentTasksState);
+      await saveTasks(currentTasksState);
+      toast({ title: "AI Tasks Processed", description: `${changesMade} update(s) made based on AI instructions.` });
+    } else {
+      toast({ title: "AI Tasks Processed", description: "No changes made by AI or tasks not found." });
+    }
+  }, [tasks, saveTasks, toast]);
+
 
   return { 
     tasks, 
     isLoading, 
-    addTask, 
-    addSubtask,
+    addTask, // This is the wrapped addSingleTask
+    addSubtask, // This is the wrapped addSingleSubtask
     toggleTaskCompletion,
-    deleteTask,
+    deleteTask, // This is the wrapped deleteSingleTask
     editTask,
     updateTaskPriority,
     updateTaskStatus,
@@ -336,5 +450,6 @@ export function useTasks() {
     generateShareLink,
     setTasks, 
     saveTasks, 
+    applyAiTaskOperations,
   };
 }
