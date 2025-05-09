@@ -13,7 +13,7 @@ export function ChecklistItemContent({ text, completed }: ChecklistItemContentPr
   return (
     <div 
       className={cn(
-        "prose prose-sm dark:prose-invert max-w-none break-words",
+        "prose prose-sm dark:prose-invert max-w-none break-words [&>p]:my-0", // Remove top/bottom margin from paragraphs
         completed && "line-through text-muted-foreground"
       )}
     >

@@ -74,7 +74,7 @@ export function ChecklistItem({
   const [showAddSubtaskInput, setShowAddSubtaskInput] = useState(false);
   const [newSubtaskText, setNewSubtaskText] = useState('');
 
-  const handleAddSubtaskClick = () => {
+  const handleAddSubtaskSubmit = () => {
     if (newSubtaskText.trim()) {
       onAddSubtask(task.id, newSubtaskText.trim());
       setNewSubtaskText('');
@@ -113,7 +113,6 @@ export function ChecklistItem({
               </Tooltip>
             )}
             {depth > 0 && <div className="w-8 shrink-0"></div>} {/* Placeholder for drag handle space */}
-
 
             <DropdownMenu>
               <Tooltip>
@@ -162,9 +161,9 @@ export function ChecklistItem({
               aria-labelledby={`task-text-${task.id}`}
             />
             
-            <div className="flex-grow space-y-1">
+            <div className="flex-grow space-y-1 min-w-0"> {/* Added min-w-0 for flex shrink */}
               <label htmlFor={`task-${task.id}`} className="sr-only">Task text</label>
-              <div id={`task-text-${task.id}`} className="cursor-pointer" onClick={() => onToggleComplete(task.id)}>
+              <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center" onClick={() => onToggleComplete(task.id)}>
                   <ChecklistItemContent text={task.text} completed={task.completed} />
               </div>
               {task.tags && task.tags.length > 0 && (
@@ -191,6 +190,15 @@ export function ChecklistItem({
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" onClick={() => setShowAddSubtaskInput(prev => !prev)} className="h-8 w-8">
+                    <Plus className="h-4 w-4" />
+                    <span className="sr-only">Add subtask</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add subtask</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" onClick={() => onDelete(task.id)} className="h-8 w-8 hover:text-destructive">
                     <Trash2 className="h-4 w-4" />
                     <span className="sr-only">Delete task</span>
@@ -201,57 +209,51 @@ export function ChecklistItem({
             </div>
           </div>
 
-          <div className="pl-8"> {/* Indent subtask controls and subtasks themselves */}
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="h-7 px-2 py-1 text-xs mt-1"
-              onClick={() => setShowAddSubtaskInput(prev => !prev)}
-            >
-              <Plus className="mr-1 h-3 w-3" /> Add Subtask
-            </Button>
+          {(showAddSubtaskInput || (task.subtasks && task.subtasks.length > 0)) && (
+            <div className="pl-8"> {/* Indent subtask controls and subtasks themselves */}
+              {showAddSubtaskInput && (
+                <div className="mt-2 flex gap-2 items-center">
+                  <Input 
+                    value={newSubtaskText}
+                    onChange={(e) => setNewSubtaskText(e.target.value)}
+                    placeholder="New subtask text"
+                    className="h-8 flex-grow"
+                    aria-label="New subtask input"
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddSubtaskSubmit()}
+                  />
+                  <Button size="sm" onClick={handleAddSubtaskSubmit} className="h-8">Save</Button>
+                  <Button variant="ghost" size="sm" onClick={() => {
+                    setNewSubtaskText('');
+                    setShowAddSubtaskInput(false);
+                  }} className="h-8">Cancel</Button>
+                </div>
+              )}
 
-            {showAddSubtaskInput && (
-              <div className="mt-2 flex gap-2 items-center">
-                <Input 
-                  value={newSubtaskText}
-                  onChange={(e) => setNewSubtaskText(e.target.value)}
-                  placeholder="New subtask text"
-                  className="h-8 flex-grow"
-                  aria-label="New subtask input"
-                />
-                <Button size="sm" onClick={handleAddSubtaskClick} className="h-8">Save</Button>
-                <Button variant="ghost" size="sm" onClick={() => {
-                  setNewSubtaskText('');
-                  setShowAddSubtaskInput(false);
-                }} className="h-8">Cancel</Button>
-              </div>
-            )}
-
-            {task.subtasks && task.subtasks.length > 0 && (
-              <Accordion type="single" collapsible className="mt-2 w-full">
-                <AccordionItem value={`subtasks-${task.id}`} className="border-b-0">
-                  <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start">
-                    {task.subtasks.length} Subtask(s)
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-1">
-                    {task.subtasks.map(subtask => (
-                      <ChecklistItem
-                        key={subtask.id}
-                        task={subtask}
-                        onToggleComplete={onToggleComplete}
-                        onDelete={onDelete}
-                        onEdit={onEdit}
-                        onUpdatePriority={onUpdatePriority}
-                        onAddSubtask={onAddSubtask}
-                        depth={depth + 1}
-                      />
-                    ))}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            )}
-          </div>
+              {task.subtasks && task.subtasks.length > 0 && (
+                <Accordion type="single" collapsible className="mt-2 w-full" defaultValue={depth < 1 ? `subtasks-${task.id}`: undefined}>
+                  <AccordionItem value={`subtasks-${task.id}`} className="border-b-0">
+                    <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-70 data-[state=open]:opacity-100">
+                      {task.subtasks.length} Subtask(s)
+                    </AccordionTrigger>
+                    <AccordionContent className="pt-1">
+                      {task.subtasks.map(subtask => (
+                        <ChecklistItem
+                          key={subtask.id}
+                          task={subtask}
+                          onToggleComplete={onToggleComplete}
+                          onDelete={onDelete}
+                          onEdit={onEdit}
+                          onUpdatePriority={onUpdatePriority}
+                          onAddSubtask={onAddSubtask}
+                          depth={depth + 1}
+                        />
+                      ))}
+                    </AccordionContent>
+                  </AccordionItem>
+                </Accordion>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </TooltipProvider>
