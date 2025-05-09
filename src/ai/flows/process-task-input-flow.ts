@@ -70,10 +70,12 @@ const prompt = ai.definePrompt({
   input: {schema: ProcessTaskInputSchema},
   output: {schema: ProcessTaskOutputSchema},
   prompt: `You are an intelligent task management assistant.
+Your primary goal is to understand the user's intent, even if their language is informal or doesn't follow strict commands.
 Parse the user's natural language input to identify tasks to add, tasks to remove, and tasks to update.
+If a user describes a project, goal, or activity (e.g., "plan a birthday party", "organize my study schedule for exams", "work on the new marketing campaign"), you should interpret this as a main task.
+If they also ask for steps, suggestions, or an outline for such a project/goal, create the main task and then generate 2-4 relevant, actionable subtasks under it.
 The user might specify tasks and subtasks. Subtasks are often indicated by phrases like "under [Parent Task Name]", "with subtasks:", "subtasks for [Parent Task Name]:", or using indentation-like phrasing.
 Multiple tasks can be separated by semicolons, "and", or new lines.
-If the user asks for subtask suggestions for a named project or task (e.g., 'suggest subtasks for Project Alpha', 'create a task Birthday Party and suggest subtasks'), you should create the main project/task, and then generate 2-4 relevant subtasks under it. These suggested subtasks should also go into the 'tasksToAdd' array with the 'parentTaskText' field pointing to the main project/task text.
 
 Input: "{{naturalLanguageInput}}"
 
@@ -206,12 +208,39 @@ Examples:
      "tasksToUpdate": []
    }
 
+8. Input: "I want to start a small vegetable garden. Can you help me outline the main things I need to do?"
+   Output: {
+     "tasksToAdd": [
+       { "text": "Start a small vegetable garden" },
+       { "text": "Research and select vegetables", "parentTaskText": "Start a small vegetable garden" },
+       { "text": "Prepare garden bed or containers", "parentTaskText": "Start a small vegetable garden" },
+       { "text": "Plant seeds/seedlings", "parentTaskText": "Start a small vegetable garden" },
+       { "text": "Establish watering and care routine", "parentTaskText": "Start a small vegetable garden" }
+     ],
+     "tasksToRemove": [],
+     "tasksToUpdate": []
+   }
+
+9. Input: "Okay, for the 'New Website Launch' project, let's add 'Draft content' and 'Design mockups'. Also, could you remind me to buy milk later? And the 'Client Meeting' task should be marked as Done."
+   Output: {
+     "tasksToAdd": [
+       { "text": "Draft content", "parentTaskText": "New Website Launch" },
+       { "text": "Design mockups", "parentTaskText": "New Website Launch" },
+       { "text": "Buy milk" }
+     ],
+     "tasksToRemove": [],
+     "tasksToUpdate": [
+       { "taskIdentifier": "Client Meeting", "status": "Done" }
+     ]
+   }
+
 
 Make sure to correctly identify parent-child relationships for subtasks.
 If no tasks are to be added, removed, or updated, return empty arrays for the respective keys.
 The "text" field in "tasksToAdd" should be the pure task description without prefixes like "Add task:".
 For "tasksToUpdate", "taskIdentifier" MUST be the current name of the task. If renaming, "newText" should be the new name.
 If a field is not mentioned for update, do not include it in the "tasksToUpdate" object for that task (e.g., if only priority changes, only include "taskIdentifier" and "priority").
+If the user mentions a project or high-level goal and asks for steps or an outline, create the main task first, then the steps as subtasks under it.
 `,
 });
 

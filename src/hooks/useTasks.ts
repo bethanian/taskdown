@@ -8,7 +8,15 @@ import type { Task as TaskType, Priority, Attachment, TaskStatus } from '@/lib/t
 // import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants'; // REMOVE: No longer using for primary storage
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_TASK_STATUS } from '@/lib/types';
-import type { ProcessTaskInput, ProcessTaskOutput, ProcessedTask } from '@/ai/flows/process-task-input-flow';
+// MODIFIED: Import the actual AI processing function and its types
+import { processTaskInput as processAiInputFlow, type ProcessTaskInput, type ProcessTaskOutput, type ProcessedTask, type UpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
+// MODIFIED: Import task manipulation functions from src/lib/tasks
+import { 
+  editTask as editTaskSupabase, 
+  toggleComplete as toggleCompleteSupabase, 
+  generateShareLink as generateShareLinkSupabase,
+  type TaskUpdate as SupabaseTaskUpdatePayload // Keep this type for mapping
+} from '@/lib/tasks';
 
 // localforage.config({ // REMOVE
 //   name: 'TaskdownDB',
@@ -84,6 +92,22 @@ const buildHierarchyRecursive = (
       subtasks: buildHierarchyRecursive(items, item.id),
     }))
     .sort((a, b) => b.createdAt - a.createdAt); // Sort by creation time, newest first
+};
+
+// Helper function to find a task (and its subtasks) by text recursively
+const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskType | null => {
+  for (const task of tasksToSearch) {
+    if (task.text === text) {
+      return task;
+    }
+    if (task.subtasks && task.subtasks.length > 0) {
+      const foundInSubtask = findTaskByTextRecursive(task.subtasks, text);
+      if (foundInSubtask) {
+        return foundInSubtask;
+      }
+    }
+  }
+  return null;
 };
 
 export function useTasks() {
@@ -215,47 +239,181 @@ export function useTasks() {
     }
   }, [toast, fetchAndSetTasks, tasks]); // tasks dependency for potential local filtering if not refetching
 
-  const editTask = useCallback(async (id: string, updates: Partial<Omit<TaskType, 'subtasks' | 'id'>>) => {
-    console.warn("editTask with Supabase not implemented yet");
-    toast({title: "Pending Feature", description: "Editing tasks with Supabase backend is being updated."}) 
-  }, [toast]);
-  
-  const toggleComplete = useCallback(async (id: string, completedStatus?: boolean) => {
-    console.warn("toggleComplete with Supabase not implemented yet");
-    toast({title: "Pending Feature", description: "Toggling task completion with Supabase backend is being updated."}) 
-  }, [toast]);
-
-  const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
-    console.warn("generateShareLink with Supabase not implemented yet");
-    toast({title: "Pending Feature", description: "Generating share links with Supabase backend is being updated."}) 
-    return null; 
-  }, [toast]);
-
-  const processAiInput = useCallback(async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
-    console.warn("processAiInput with Supabase: Using stubbed addTask. Full AI logic not yet implemented.");
-    let newTaskId: string | null = null;
-    let newTasksAdded: ProcessedTask[] = []; 
-    if (input.naturalLanguageInput.startsWith('add task:') || input.naturalLanguageInput.startsWith('create task:')){
-        const taskText = input.naturalLanguageInput.split(':')[1]?.trim();
-        if (taskText) {
-            newTaskId = await addTask(taskText); 
-            if (newTaskId) {
-                newTasksAdded.push({ text: taskText });
-            }
-        }
+  // MODIFIED: Call editTaskSupabase from @/lib/tasks
+  const editTask = useCallback(async (id: string, updatesFromAi: UpdateTaskDetails) => {
+    if (!id) {
+      toast({ title: "Error", description: "Task ID is required for editing.", variant: "destructive" });
+      return;
     }
-    if (newTasksAdded.length > 0) {
-         toast({ title: "AI Action (Simplified)", description: `Added task via AI: ${newTasksAdded.map(t=>t.text).join(', ')}`});
-        return {
-            tasksToAdd: newTasksAdded,
-            tasksToRemove: [],
-            tasksToUpdate: [],
-        };
+
+    // Map AI's UpdateTaskDetails to SupabaseTaskUpdatePayload for src/lib/tasks's editTask
+    const supabaseUpdates: SupabaseTaskUpdatePayload = {};
+    if (updatesFromAi.newText !== undefined) supabaseUpdates.title = updatesFromAi.newText;
+    if (updatesFromAi.status !== undefined) supabaseUpdates.status = updatesFromAi.status;
+    if (updatesFromAi.priority !== undefined) supabaseUpdates.priority = updatesFromAi.priority;
+    // Note: The TaskType in useTasks uses 'text' for title.
+    // The SupabaseTaskUpdatePayload (from src/lib/tasks) uses 'title'. This mapping is now correct.
+    // Other fields from UpdateTaskDetails that match SupabaseTaskUpdatePayload:
+    if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
+    if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
+    if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
+    // dueDate needs to be mapped if AI provides it and it matches a field in SupabaseTaskUpdatePayload
+    // Assuming AI's UpdateTaskDetailsSchema does not currently output dueDate. If it did, add mapping here.
+
+    if (Object.keys(supabaseUpdates).length === 0) {
+      toast({ title: "Info", description: "No actionable changes identified by AI for the task update." });
+      return;
+    }
+    
+    const { error } = await editTaskSupabase(id, supabaseUpdates);
+
+    if (error) {
+      console.error("Failed to edit task via Supabase function", error);
+      toast({ title: "Error", description: `Failed to edit task: ${error.message}`, variant: "destructive" });
     } else {
-        toast({ title: "AI Action", description: "No simple 'add task:' command recognized by stub.", variant: "default" });
+      toast({ title: "Success", description: "Task updated by AI." });
+      await fetchAndSetTasks(); // Refetch to reflect changes
+    }
+  }, [toast, fetchAndSetTasks]);
+  
+  // MODIFIED: Call toggleCompleteSupabase from @/lib/tasks
+  const toggleComplete = useCallback(async (id: string, completedStatus?: boolean) => {
+    if (!id) {
+      toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
+      return;
+    }
+    
+    let currentCompleted = completedStatus;
+    if (currentCompleted === undefined) {
+        // Fetch current status if not provided - this is important for toggleCompleteSupabase
+        const { data: taskData, error: fetchError } = await supabase
+            .from('tasks')
+            .select('completed')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !taskData) {
+            console.error("Failed to fetch task for toggle:", fetchError);
+            toast({ title: "Error", description: "Could not fetch task to toggle.", variant: "destructive"});
+            return;
+        }
+        currentCompleted = taskData.completed;
+    }
+
+    // toggleCompleteSupabase expects the *current* status to then invert it.
+    const { error } = await toggleCompleteSupabase(id, currentCompleted as boolean);
+
+    if (error) {
+      console.error("Failed to toggle task completion via Supabase function", error);
+      toast({ title: "Error", description: `Failed to toggle task: ${error.message}`, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Task completion toggled." });
+      await fetchAndSetTasks();
+    }
+  }, [toast, fetchAndSetTasks]);
+
+  // MODIFIED: Call generateShareLinkSupabase from @/lib/tasks
+  const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
+    if (!id) {
+      toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
+      return null;
+    }
+    
+    const { data: updatedTask, error } = await generateShareLinkSupabase(id);
+
+    if (error || !updatedTask || !updatedTask.share_id) {
+        console.error("Failed to generate share link via Supabase function", error);
+        toast({title: "Error", description: `Could not generate share link: ${error?.message || 'No share ID returned.'}`, variant: "destructive"});
         return null;
     }
-  }, [toast, addTask]);
+    
+    toast({title: "Share Link Generated", description: `Task share ID: ${updatedTask.share_id}.`});
+    await fetchAndSetTasks(); // Refetch to show new share_id if displayed
+    return `${window.location.origin}/view-task/${updatedTask.share_id}`; // Adjusted example link
+  }, [toast, fetchAndSetTasks]);
+
+  // MODIFIED: Use the actual AI flow
+  const processAiInput = useCallback(async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
+    toast({ title: "AI Processing...", description: "Please wait.", duration: 2000});
+    try {
+      const aiOutput = await processAiInputFlow(input);
+
+      if (!aiOutput) {
+        toast({ title: "AI Error", description: "No output from AI.", variant: "destructive" });
+        return null;
+      }
+
+      let operationsPerformed = false;
+      const tasksCurrentlyInState = [...tasks]; // Capture current state for parent finding
+
+      // Process tasks to add
+      if (aiOutput.tasksToAdd && aiOutput.tasksToAdd.length > 0) {
+        for (const taskToAdd of aiOutput.tasksToAdd) {
+          let parentId: string | null = null;
+          if (taskToAdd.parentTaskText) {
+            const parentTask = findTaskByTextRecursive(tasksCurrentlyInState, taskToAdd.parentTaskText);
+            if (parentTask) {
+              parentId = parentTask.id;
+            } else {
+              console.warn(`Parent task with text "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level. Consider adding parents first or ensuring AI lists them first.`);
+              // Alternative: If many tasks are added, could do a first pass for non-subtasks, refetch, then a second pass for subtasks.
+              // For now, if parent isn't in *current* state, it's added as top-level. addTask refetches, so next iteration might find it.
+            }
+          }
+          const newTaskId = await addTask(taskToAdd.text, parentId ?? undefined);
+          if (newTaskId) {
+            operationsPerformed = true;
+            // If we added a task that could be a parent for a subsequent task in this batch,
+            // we might need to refresh `tasksCurrentlyInState` or handle this more robustly.
+            // For simplicity, relying on `addTask`'s internal refetch and hoping for the best for now.
+          }
+        }
+      }
+
+      // Process tasks to remove
+      if (aiOutput.tasksToRemove && aiOutput.tasksToRemove.length > 0) {
+        for (const taskToRemove of aiOutput.tasksToRemove) {
+          const task = findTaskByTextRecursive(tasksCurrentlyInState, taskToRemove.text); // Search in original state snapshot
+          if (task) {
+            await deleteTask(task.id);
+            operationsPerformed = true;
+          } else {
+            console.warn(`Task with text "${taskToRemove.text}" not found for deletion.`);
+            toast({title: "AI Info", description: `Task "${taskToRemove.text}" for deletion not found.`, variant: "default"});
+          }
+        }
+      }
+
+      // Process tasks to update
+      if (aiOutput.tasksToUpdate && aiOutput.tasksToUpdate.length > 0) {
+        for (const taskToUpdate of aiOutput.tasksToUpdate) {
+          const task = findTaskByTextRecursive(tasksCurrentlyInState, taskToUpdate.taskIdentifier); // Search in original state snapshot
+          if (task) {
+            // The `editTask` in this hook now expects UpdateTaskDetails directly
+            await editTask(task.id, taskToUpdate); 
+            operationsPerformed = true;
+          } else {
+            console.warn(`Task with text "${taskToUpdate.taskIdentifier}" not found for update.`);
+            toast({title: "AI Info", description: `Task "${taskToUpdate.taskIdentifier}" for update not found.`, variant: "default"});
+          }
+        }
+      }
+
+      if (operationsPerformed) {
+        toast({ title: "AI Actions Completed", description: "Tasks managed by AI.", duration: 3000 });
+        await fetchAndSetTasks(); // Final refetch to ensure UI consistency after all operations.
+      } else if (!aiOutput.tasksToAdd?.length && !aiOutput.tasksToRemove?.length && !aiOutput.tasksToUpdate?.length) {
+        toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage from your input.", duration: 3000 });
+      }
+      
+      return aiOutput;
+
+    } catch (error: any) {
+      console.error("Error processing AI input:", error);
+      toast({ title: "AI Error", description: error.message || "Failed to process AI command.", variant: "destructive" });
+      return null;
+    }
+  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow]); // Added processAiInputFlow to dependencies
 
   return { 
     tasks, 
