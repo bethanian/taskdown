@@ -344,36 +344,56 @@ export function useTasks() {
       }
 
       let operationsPerformed = false;
-      const tasksCurrentlyInState = [...tasks]; // Capture current state for parent finding
+      // tasksCurrentlyInState is not strictly needed if findTaskByTextRecursive always uses the latest `tasks` state
+      // and if addTask refetches properly before the next find call for a different subtask group.
+      // However, for finding parents of subtasks *within the same AI batch*, we need a more direct approach.
 
-      // Process tasks to add
+      // Process tasks to add (Revised Two-Pass Approach)
       if (aiOutput.tasksToAdd && aiOutput.tasksToAdd.length > 0) {
-        for (const taskToAdd of aiOutput.tasksToAdd) {
+        const mainTasksFromAI = aiOutput.tasksToAdd.filter(t => !t.parentTaskText);
+        const subTasksFromAI = aiOutput.tasksToAdd.filter(t => !!t.parentTaskText);
+        const newlyCreatedParentsMap = new Map<string, string>(); // Maps task text to new ID
+
+        // Pass 1: Add main tasks
+        for (const taskToAdd of mainTasksFromAI) {
+          const newTaskId = await addTask(taskToAdd.text, undefined);
+          if (newTaskId) {
+            newlyCreatedParentsMap.set(taskToAdd.text, newTaskId);
+            operationsPerformed = true;
+          }
+        }
+
+        // Pass 2: Add subtasks
+        // Note: addTask internally calls fetchAndSetTasks, so the `tasks` state variable 
+        // will be updated after each main task addition. 
+        // The newlyCreatedParentsMap gives immediate access to IDs from THIS batch.
+        for (const taskToAdd of subTasksFromAI) {
           let parentId: string | null = null;
           if (taskToAdd.parentTaskText) {
-            const parentTask = findTaskByTextRecursive(tasksCurrentlyInState, taskToAdd.parentTaskText);
-            if (parentTask) {
-              parentId = parentTask.id;
+            if (newlyCreatedParentsMap.has(taskToAdd.parentTaskText)) {
+              parentId = newlyCreatedParentsMap.get(taskToAdd.parentTaskText)!;
             } else {
-              console.warn(`Parent task with text "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level. Consider adding parents first or ensuring AI lists them first.`);
-              // Alternative: If many tasks are added, could do a first pass for non-subtasks, refetch, then a second pass for subtasks.
-              // For now, if parent isn't in *current* state, it's added as top-level. addTask refetches, so next iteration might find it.
+              // Parent wasn't in *this* batch of new main tasks, search existing/recently-added state
+              const parentTask = findTaskByTextRecursive(tasks, taskToAdd.parentTaskText);
+              if (parentTask) {
+                parentId = parentTask.id;
+              } else {
+                console.warn(`Parent task with text "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level.`);
+              }
             }
           }
-          const newTaskId = await addTask(taskToAdd.text, parentId ?? undefined);
-          if (newTaskId) {
+          const newSubtaskId = await addTask(taskToAdd.text, parentId ?? undefined);
+          if (newSubtaskId) {
             operationsPerformed = true;
-            // If we added a task that could be a parent for a subsequent task in this batch,
-            // we might need to refresh `tasksCurrentlyInState` or handle this more robustly.
-            // For simplicity, relying on `addTask`'s internal refetch and hoping for the best for now.
           }
         }
       }
 
       // Process tasks to remove
       if (aiOutput.tasksToRemove && aiOutput.tasksToRemove.length > 0) {
+        // Use the current `tasks` state which should be updated by any `addTask` operations above.
         for (const taskToRemove of aiOutput.tasksToRemove) {
-          const task = findTaskByTextRecursive(tasksCurrentlyInState, taskToRemove.text); // Search in original state snapshot
+          const task = findTaskByTextRecursive(tasks, taskToRemove.text);
           if (task) {
             await deleteTask(task.id);
             operationsPerformed = true;
@@ -386,10 +406,10 @@ export function useTasks() {
 
       // Process tasks to update
       if (aiOutput.tasksToUpdate && aiOutput.tasksToUpdate.length > 0) {
+        // Use the current `tasks` state.
         for (const taskToUpdate of aiOutput.tasksToUpdate) {
-          const task = findTaskByTextRecursive(tasksCurrentlyInState, taskToUpdate.taskIdentifier); // Search in original state snapshot
+          const task = findTaskByTextRecursive(tasks, taskToUpdate.taskIdentifier); 
           if (task) {
-            // The `editTask` in this hook now expects UpdateTaskDetails directly
             await editTask(task.id, taskToUpdate); 
             operationsPerformed = true;
           } else {
@@ -400,8 +420,12 @@ export function useTasks() {
       }
 
       if (operationsPerformed) {
+        // A single fetchAndSetTasks at the end might be more efficient if addTask/deleteTask/editTask 
+        // didn't already call it. But since they do, the state should be mostly consistent.
+        // A final call here ensures the absolute latest state if there were rapid sequential operations not fully captured.
+        // However, given current structure, this might be redundant. Let's rely on individual function refetches for now.
+        // If issues persist, consider a single final fetchAndSetTasks() here and make internal ones conditional.
         toast({ title: "AI Actions Completed", description: "Tasks managed by AI.", duration: 3000 });
-        await fetchAndSetTasks(); // Final refetch to ensure UI consistency after all operations.
       } else if (!aiOutput.tasksToAdd?.length && !aiOutput.tasksToRemove?.length && !aiOutput.tasksToUpdate?.length) {
         toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage from your input.", duration: 3000 });
       }
