@@ -94,6 +94,7 @@ export function useTasks() {
   const loadTasksRecursive = (tasksToLoad: Task[]): Task[] => {
     return tasksToLoad.map(task => ({
       ...task,
+      tags: task.tags || [],
       priority: task.priority || 'none',
       notes: task.notes || '',
       attachments: task.attachments || [],
@@ -135,7 +136,7 @@ export function useTasks() {
     }
   }, [toast]);
 
-  const addTask = useCallback((text: string, tags: string[] = []) => {
+  const addTask = useCallback((text: string) => {
     if (!text.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
       return;
@@ -144,7 +145,7 @@ export function useTasks() {
       id: crypto.randomUUID(),
       text,
       completed: false,
-      tags,
+      tags: [],
       priority: 'none',
       createdAt: Date.now(),
       updatedAt: Date.now(),

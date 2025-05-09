@@ -73,6 +73,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setPriority(task.priority || 'none');
       setNotes(task.notes || '');
       setAttachments(task.attachments || []);
+      setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
     }
@@ -88,11 +89,14 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      const newTag = currentTagInput.trim();
+      const newTag = currentTagInput.trim().toLowerCase(); // Store tags in lowercase for consistency
       if (newTag && !tags.includes(newTag)) {
         setTags([...tags, newTag]);
       }
       setCurrentTagInput('');
+    } else if (e.key === 'Backspace' && currentTagInput === '' && tags.length > 0) {
+      // Optional: remove last tag on backspace if input is empty
+      // setTags(tags.slice(0, -1));
     }
   };
 
