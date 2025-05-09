@@ -14,7 +14,7 @@ import { List, LayoutGrid, Sparkles } from 'lucide-react';
 import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
 import { processTaskInput, type ProcessTaskInput, type ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
 import { useToast } from '@/hooks/use-toast';
-import { format, isPast, isToday, isFuture, differenceInCalendarDays } from 'date-fns';
+import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 
 
 export default function TaskdownPage() {
@@ -115,7 +115,6 @@ export default function TaskdownPage() {
 
     const checkReminders = () => {
       const now = new Date();
-      const twentyFourHoursFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
       let newRemindersShown = false;
       const newRemindedIds = new Set(remindedTaskIds);
 
@@ -123,6 +122,7 @@ export default function TaskdownPage() {
         for (const task of taskList) {
           if (task.dueDate && !task.completed && !newRemindedIds.has(task.id)) {
             const dueDateObj = new Date(task.dueDate);
+            const diffDays = differenceInCalendarDays(dueDateObj, now);
             
             if (isPast(dueDateObj) && !isToday(dueDateObj)) { 
               toast({
@@ -139,7 +139,7 @@ export default function TaskdownPage() {
               });
               newRemindedIds.add(task.id);
               newRemindersShown = true;
-            } else if (isFuture(dueDateObj) && differenceInCalendarDays(dueDateObj, now) === 1) { // Due tomorrow
+            } else if (diffDays === 1) { // Due tomorrow
                toast({
                 title: "Reminder: Task Due Tomorrow",
                 description: `"${task.text}" is due tomorrow, ${format(dueDateObj, "PPP")}.`,
@@ -147,10 +147,10 @@ export default function TaskdownPage() {
               newRemindedIds.add(task.id);
               newRemindersShown = true;
             }
-             else if (isFuture(dueDateObj) && dueDateObj <= twentyFourHoursFromNow && differenceInCalendarDays(dueDateObj, now) > 1) { // Due within 24 hours but not today or tomorrow
+             else if (diffDays > 1 && diffDays <= 7) { // Due in 2-7 days
               toast({
                 title: "Reminder: Task Due Soon",
-                description: `"${task.text}" is due on ${format(dueDateObj, "PPP")}.`,
+                description: `"${task.text}" is due in ${diffDays} days, on ${format(dueDateObj, "PPP")}.`,
               });
               newRemindedIds.add(task.id);
               newRemindersShown = true;

@@ -22,8 +22,20 @@ interface DatePickerProps {
 }
 
 export function DatePicker({ date, setDate, disabled }: DatePickerProps) {
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  const handleDateSelect = (selectedDate: Date | undefined) => {
+    setDate(selectedDate instanceof Date ? selectedDate : undefined);
+    setIsOpen(false);
+  }
+
+  const handleClearDate = () => {
+    setDate(undefined);
+    setIsOpen(false);
+  }
+
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <Button
           variant={"outline"}
@@ -41,7 +53,7 @@ export function DatePicker({ date, setDate, disabled }: DatePickerProps) {
         <Calendar
           mode="single"
           selected={date}
-          onSelect={(selectedDate) => setDate(selectedDate instanceof Date ? selectedDate : undefined)}
+          onSelect={handleDateSelect}
           initialFocus
         />
         <div className="p-2 border-t border-border flex justify-end">
@@ -51,7 +63,7 @@ export function DatePicker({ date, setDate, disabled }: DatePickerProps) {
                         <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setDate(undefined)}
+                            onClick={handleClearDate}
                             disabled={!date || disabled}
                             aria-label="Clear date"
                         >
