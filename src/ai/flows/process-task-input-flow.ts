@@ -73,6 +73,7 @@ const prompt = ai.definePrompt({
 Parse the user's natural language input to identify tasks to add, tasks to remove, and tasks to update.
 The user might specify tasks and subtasks. Subtasks are often indicated by phrases like "under [Parent Task Name]", "with subtasks:", "subtasks for [Parent Task Name]:", or using indentation-like phrasing.
 Multiple tasks can be separated by semicolons, "and", or new lines.
+If the user asks for subtask suggestions for a named project or task (e.g., 'suggest subtasks for Project Alpha', 'create a task Birthday Party and suggest subtasks'), you should create the main project/task, and then generate 2-4 relevant subtasks under it. These suggested subtasks should also go into the 'tasksToAdd' array with the 'parentTaskText' field pointing to the main project/task text.
 
 Input: "{{naturalLanguageInput}}"
 
@@ -188,6 +189,21 @@ Examples:
          "assignedTo": "" // Indicate unassignment
        }
      ]
+   }
+
+7. Input: "Create a project named 'Client Onboarding', suggest some subtasks for it. Also, delete task 'Old Notes'"
+   Output: {
+     "tasksToAdd": [
+       { "text": "Client Onboarding" },
+       { "text": "Initial consultation call", "parentTaskText": "Client Onboarding" },
+       { "text": "Send welcome package", "parentTaskText": "Client Onboarding" },
+       { "text": "Set up project in internal tools", "parentTaskText": "Client Onboarding" },
+       { "text": "Schedule kick-off meeting", "parentTaskText": "Client Onboarding" }
+     ],
+     "tasksToRemove": [
+       { "text": "Old Notes" }
+     ],
+     "tasksToUpdate": []
    }
 
 
