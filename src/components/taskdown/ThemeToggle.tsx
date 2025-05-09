@@ -42,17 +42,26 @@ export function ThemeToggle() {
         <DropdownMenuItem onClick={() => setTheme("aqua")}>
           Aqua
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("onyx")}>
-          Onyx
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("leather")}>
           Leather
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("lightning")}>
           Lightning
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => setTheme("reddish")}>
-          Reddish
+        <DropdownMenuItem onClick={() => setTheme("zen")}>
+          Zen
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("forest")}>
+          Forest
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("ocean")}>
+          Ocean
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("desert")}>
+          Desert
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("starlight")}>
+          Starlight
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
