@@ -4,10 +4,13 @@ import React, { useState, useEffect } from 'react';
 import { Header } from '@/components/taskdown/Header';
 import { NewTaskForm } from '@/components/taskdown/NewTaskForm';
 import { ChecklistView } from '@/components/taskdown/ChecklistView';
+import { KanbanView } from '@/components/taskdown/KanbanView'; // Added KanbanView
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
 import type { Task } from '@/lib/types';
-import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar'; // Added
+import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs
+import { List, LayoutGrid } from 'lucide-react'; // Added icons for view toggle
 
 export default function TaskdownPage() {
   const { 
@@ -18,16 +21,17 @@ export default function TaskdownPage() {
     toggleTaskCompletion, 
     deleteTask, 
     editTask, 
-    updateTaskPriority, 
+    updateTaskPriority,
+    updateTaskStatus, // Added updateTaskStatus
     setTasks, 
     saveTasks 
   } = useTasks();
 
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
-  const [rawSearchTerm, setRawSearchTerm] = useState(''); // Added for search input
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(''); // Added for debounced search
+  const [rawSearchTerm, setRawSearchTerm] = useState(''); 
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [activeView, setActiveView] = useState<'list' | 'kanban'>('list'); // Added activeView state
 
-  // Debounce search term
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchTerm(rawSearchTerm);
@@ -38,7 +42,6 @@ export default function TaskdownPage() {
     };
   }, [rawSearchTerm]);
   
-  // Combined filtering logic for tags and search
   const filteredTasks = React.useMemo(() => {
     const currentSearchTerm = debouncedSearchTerm.trim().toLowerCase();
     const currentActiveFilters = activeFilters.map(f => f.toLowerCase());
@@ -71,7 +74,7 @@ export default function TaskdownPage() {
           if (taskItselfIsKept || filteredSubtasks.length > 0) {
             return {
               ...task,
-              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, activeTagFilters, searchTerm) : []) : filteredSubtasks,
+              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], searchTerm) : []) : filteredSubtasks, // Note: subtask filtering for tags might need to be adjusted based on desired behavior. Currently filtering subtasks without active tag filters if parent matches.
             };
           }
           return null;
@@ -85,13 +88,25 @@ export default function TaskdownPage() {
 
 
   return (
-    <div className="container mx-auto max-w-3xl py-8 px-4 min-h-screen flex flex-col">
+    <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col"> {/* Increased max-width for Kanban */}
       <Header />
-      <div className="my-6">
-        <GlobalSearchBar 
-          searchTerm={rawSearchTerm} 
-          setSearchTerm={setRawSearchTerm} 
-        />
+      <div className="my-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
+        <div className="w-full sm:w-auto flex-grow">
+         <GlobalSearchBar 
+            searchTerm={rawSearchTerm} 
+            setSearchTerm={setRawSearchTerm} 
+          />
+        </div>
+        <Tabs defaultValue="list" value={activeView} onValueChange={(value) => setActiveView(value as 'list' | 'kanban')} className="w-full sm:w-auto">
+          <TabsList className="grid w-full grid-cols-2 sm:w-auto">
+            <TabsTrigger value="list" className="flex items-center gap-2">
+              <List className="h-4 w-4" /> List
+            </TabsTrigger>
+            <TabsTrigger value="kanban" className="flex items-center gap-2">
+              <LayoutGrid className="h-4 w-4" /> Kanban
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
       <main className="flex-grow">
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
@@ -99,23 +114,38 @@ export default function TaskdownPage() {
           <NewTaskForm addTask={addTask} />
         </div>
         
-        <div className="my-6 p-6 bg-card rounded-lg shadow">
+        <div className="mb-6 p-6 bg-card rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3 text-primary">Filter by Tags</h2>
           <TagFilter tasks={tasks} activeFilters={activeFilters} setActiveFilters={setActiveFilters} />
         </div>
 
-        <ChecklistView
-          tasks={filteredTasks}
-          isLoading={isLoading}
-          toggleTaskCompletion={toggleTaskCompletion}
-          deleteTask={deleteTask}
-          editTask={editTask}
-          updateTaskPriority={updateTaskPriority}
-          addSubtask={addSubtask}
-          setTasks={setTasks}
-          saveTasks={saveTasks}
-          searchTerm={debouncedSearchTerm.trim().toLowerCase()} // Pass search term
-        />
+        {activeView === 'list' && (
+          <ChecklistView
+            tasks={filteredTasks}
+            isLoading={isLoading}
+            toggleTaskCompletion={toggleTaskCompletion}
+            deleteTask={deleteTask}
+            editTask={editTask}
+            updateTaskPriority={updateTaskPriority}
+            addSubtask={addSubtask}
+            setTasks={setTasks}
+            saveTasks={saveTasks}
+            searchTerm={debouncedSearchTerm.trim().toLowerCase()}
+          />
+        )}
+        {activeView === 'kanban' && (
+          <KanbanView
+            tasks={filteredTasks} // Pass filtered tasks for consistency with search/tag filters
+            isLoading={isLoading}
+            onEditTask={editTask} // For editing via modal from Kanban card
+            onUpdateTaskStatus={updateTaskStatus} // For DND status changes later
+            onToggleComplete={toggleTaskCompletion}
+            onDeleteTask={deleteTask}
+            onUpdatePriority={updateTaskPriority}
+            onAddSubtask={addSubtask}
+            searchTerm={debouncedSearchTerm.trim().toLowerCase()}
+          />
+        )}
       </main>
       <footer className="text-center py-6 text-sm text-muted-foreground">
         <p>&copy; {new Date().getFullYear()} Taskdown. Built for focus.</p>

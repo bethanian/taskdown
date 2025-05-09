@@ -13,9 +13,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { Task, Priority, Attachment } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
+import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon, Flag, FlagOff, LinkIcon, Paperclip } from 'lucide-react';
+import { XIcon, TagIcon, Flag, FlagOff, LinkIcon, Paperclip, ListChecks } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -35,7 +36,8 @@ interface EditTaskDialogProps {
     newTags: string[], 
     newPriority: Priority,
     newNotes: string,
-    newAttachments: Attachment[]
+    newAttachments: Attachment[],
+    newStatus: TaskStatus // Added newStatus
   ) => void;
 }
 
@@ -51,7 +53,7 @@ function getUrlHostname(url: string): string {
     const parsedUrl = new URL(url);
     return parsedUrl.hostname;
   } catch (e) {
-    return url; // Return original string if URL parsing fails
+    return url; 
   }
 }
 
@@ -64,7 +66,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [currentAttachmentUrlInput, setCurrentAttachmentUrlInput] = useState('');
   const [currentAttachmentNameInput, setCurrentAttachmentNameInput] = useState('');
-
+  const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS); // Added status state
 
   useEffect(() => {
     if (task) {
@@ -73,6 +75,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setPriority(task.priority || 'none');
       setNotes(task.notes || '');
       setAttachments(task.attachments || []);
+      setStatus(task.status || DEFAULT_TASK_STATUS); // Initialize status
       setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
@@ -81,7 +84,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
   const handleSave = () => {
     if (task) {
-      onSave(task.id, text, tags, priority, notes, attachments);
+      onSave(task.id, text, tags, priority, notes, attachments, status); // Pass status to onSave
       onOpenChange(false);
     }
   };
@@ -89,14 +92,11 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const handleTagKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' || e.key === ',') {
       e.preventDefault();
-      const newTag = currentTagInput.trim().toLowerCase(); // Store tags in lowercase for consistency
+      const newTag = currentTagInput.trim().toLowerCase(); 
       if (newTag && !tags.includes(newTag)) {
         setTags([...tags, newTag]);
       }
       setCurrentTagInput('');
-    } else if (e.key === 'Backspace' && currentTagInput === '' && tags.length > 0) {
-      // Optional: remove last tag on backspace if input is empty
-      // setTags(tags.slice(0, -1));
     }
   };
 
@@ -106,15 +106,14 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
   const handleAddAttachment = () => {
     const url = currentAttachmentUrlInput.trim();
-    if (!url) return; // Basic validation
+    if (!url) return; 
 
     let name = currentAttachmentNameInput.trim();
     if (!name) {
-      name = getUrlHostname(url); // Fallback to hostname if name is empty
+      name = getUrlHostname(url); 
     }
     
     try {
-      // Validate URL
       new URL(url);
     } catch (_) {
       alert("Invalid URL. Please enter a valid URL starting with http:// or https://");
@@ -163,6 +162,28 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
               rows={3}
               placeholder="Your task description (Markdown supported)"
             />
+          </div>
+
+          {/* Status */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-task-status" className="text-right col-span-1">
+              Status
+            </Label>
+            <Select value={status} onValueChange={(value) => setStatus(value as TaskStatus)}>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Set status" />
+              </SelectTrigger>
+              <SelectContent>
+                {TASK_STATUS_OPTIONS.map(s => (
+                  <SelectItem key={s} value={s}>
+                    <div className="flex items-center">
+                       <ListChecks className="h-4 w-4 mr-2 text-muted-foreground" /> {/* Placeholder icon */}
+                      {s}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Priority */}

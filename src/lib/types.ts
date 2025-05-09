@@ -8,12 +8,17 @@ export interface Attachment {
   createdAt: number;
 }
 
+export type TaskStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Done';
+export const DEFAULT_TASK_STATUS: TaskStatus = 'To Do';
+export const TASK_STATUS_OPTIONS: TaskStatus[] = ['To Do', 'In Progress', 'Blocked', 'Done'];
+
 export interface Task {
   id: string;
   text: string; // User-entered text, potentially with markdown
   completed: boolean;
   tags: string[]; // Array of tag strings
   priority: Priority;
+  status: TaskStatus; // Ensure all tasks have a status
   createdAt: number; // Store as timestamp for easier localForage storage
   updatedAt: number; // Store as timestamp
   subtasks?: Task[]; // Optional array for nested subtasks
@@ -22,4 +27,3 @@ export interface Task {
 }
 
 export type Tag = string;
-

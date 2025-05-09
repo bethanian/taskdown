@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import localforage from 'localforage';
-import type { Task, Priority, Attachment } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
+import { DEFAULT_TASK_STATUS } from '@/lib/types';
 
 localforage.config({
   name: 'TaskdownDB',
@@ -81,6 +82,7 @@ const updateSubtasksCompletion = (subtasks: Task[] | undefined, completed: boole
     ...st,
     completed,
     updatedAt: Date.now(),
+    status: completed ? 'Done' : st.status === 'Done' ? DEFAULT_TASK_STATUS : st.status, // Also update status if completed/uncompleted
     subtasks: updateSubtasksCompletion(st.subtasks, completed),
   }));
 };
@@ -96,6 +98,7 @@ export function useTasks() {
       ...task,
       tags: task.tags || [],
       priority: task.priority || 'none',
+      status: task.status || DEFAULT_TASK_STATUS, // Ensure status is loaded or defaulted
       notes: task.notes || '',
       attachments: task.attachments || [],
       subtasks: task.subtasks ? loadTasksRecursive(task.subtasks) : [],
@@ -147,6 +150,7 @@ export function useTasks() {
       completed: false,
       tags: [],
       priority: 'none',
+      status: DEFAULT_TASK_STATUS, // Initialize status
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
@@ -170,6 +174,7 @@ export function useTasks() {
       completed: false,
       tags,
       priority,
+      status: DEFAULT_TASK_STATUS, // Initialize status for subtask
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
@@ -188,6 +193,7 @@ export function useTasks() {
       return {
         ...task,
         completed: newCompletedStatus,
+        status: newCompletedStatus ? 'Done' : (task.status === 'Done' ? DEFAULT_TASK_STATUS : task.status), // Update status based on completion
         updatedAt: Date.now(),
         subtasks: updateSubtasksCompletion(task.subtasks, newCompletedStatus),
       };
@@ -209,8 +215,9 @@ export function useTasks() {
     newText: string, 
     newTags: string[], 
     newPriority: Priority,
-    newNotes?: string,
-    newAttachments?: Attachment[]
+    newNotes: string, // Not optional here, pass existing if not changed
+    newAttachments: Attachment[], // Not optional, pass existing
+    newStatus: TaskStatus // Add newStatus
   ) => {
     if (!newText.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
@@ -221,8 +228,10 @@ export function useTasks() {
       text: newText,
       tags: newTags,
       priority: newPriority,
-      notes: newNotes !== undefined ? newNotes : task.notes,
-      attachments: newAttachments !== undefined ? newAttachments : task.attachments,
+      notes: newNotes,
+      attachments: newAttachments,
+      status: newStatus, // Update status
+      completed: newStatus === 'Done' ? true : (newStatus !== 'Done' && task.completed ? false : task.completed), // Sync completed with Done status
       updatedAt: Date.now(),
     });
     const updatedTasks = mapTasksRecursively(tasks, id, updateFn);
@@ -240,6 +249,19 @@ export function useTasks() {
     toast({ title: "Success", description: `Task priority set to ${priorityLabel}.` });
   }, [tasks, saveTasks, toast]);
 
+  const updateTaskStatus = useCallback((id: string, newStatus: TaskStatus) => {
+    const updateFn = (task: Task): Task => ({ 
+      ...task, 
+      status: newStatus,
+      completed: newStatus === 'Done', // Sync completed state
+      updatedAt: Date.now() 
+    });
+    const updatedTasks = mapTasksRecursively(tasks, id, updateFn);
+    setTasks(updatedTasks);
+    saveTasks(updatedTasks);
+    toast({ title: "Success", description: `Task status set to ${newStatus}.`});
+  }, [tasks, saveTasks, toast]);
+
 
   return { 
     tasks, 
@@ -250,6 +272,7 @@ export function useTasks() {
     deleteTask,
     editTask,
     updateTaskPriority,
+    updateTaskStatus, // Expose new function
     setTasks, 
     saveTasks, 
   };
