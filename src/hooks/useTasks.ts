@@ -7,7 +7,7 @@ import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import { DEFAULT_TASK_STATUS } from '@/lib/types';
-import type { ProcessTaskOutput, ProcessedTask } from '@/ai/flows/process-task-input-flow';
+import type { ProcessTaskOutput, ProcessedTask, UpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
 
 
 localforage.config({
@@ -383,7 +383,7 @@ export function useTasks() {
       const { updatedTasks, newTaskId } = coreAddTask(taskToAdd.text, currentTasksState);
       if (newTaskId) {
         currentTasksState = updatedTasks;
-        parentTextToIdMap.set(taskToAdd.text, newTaskId); // Map original text from AI
+        parentTextToIdMap.set(taskToAdd.text, newTaskId); 
         changesMade++;
       }
     }
@@ -395,7 +395,6 @@ export function useTasks() {
       let parentId = parentTextToIdMap.get(taskToAdd.parentTaskText);
       
       if (!parentId) {
-        // If parent wasn't in *this batch* of top-level tasks, search existing tasks
         const existingParentTask = findTaskByTextRecursive(currentTasksState, taskToAdd.parentTaskText);
         if (existingParentTask) {
           parentId = existingParentTask.id;
@@ -403,11 +402,10 @@ export function useTasks() {
       }
 
       if (parentId) {
-        const prevLength = currentTasksState.flatMap(t => t.subtasks || []).length;
+        const prevTaskStructureJson = JSON.stringify(currentTasksState); // For robust change detection
         currentTasksState = coreAddSubtask(parentId, taskToAdd.text, currentTasksState);
-        const newLength = currentTasksState.flatMap(t => t.subtasks || []).length;
-        if (newLength > prevLength || currentTasksState.find(t=> t.id === parentId)?.subtasks?.find(st => st.text === taskToAdd.text) ) {
-            changesMade++;
+        if (JSON.stringify(currentTasksState) !== prevTaskStructureJson) {
+             changesMade++;
         }
       } else {
         console.warn(`Parent task "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level.`);
@@ -425,19 +423,81 @@ export function useTasks() {
       if (!taskToRemove.text.trim()) continue;
       const taskToDelete = findTaskByTextRecursive(currentTasksState, taskToRemove.text);
       if (taskToDelete) {
+        const prevTaskCount = currentTasksState.flat(Infinity).length;
         currentTasksState = coreDeleteTask(taskToDelete.id, currentTasksState);
-        changesMade++;
+        if (currentTasksState.flat(Infinity).length < prevTaskCount) {
+            changesMade++;
+        }
       } else {
         console.warn(`Task "${taskToRemove.text}" not found for removal.`);
       }
     }
 
+    // Process updates
+    for (const taskUpdate of operations.tasksToUpdate || []) {
+      if (!taskUpdate.taskIdentifier.trim()) continue;
+      const taskToEdit = findTaskByTextRecursive(currentTasksState, taskUpdate.taskIdentifier);
+
+      if (taskToEdit) {
+        let modified = false;
+        const updatedTaskData = { ...taskToEdit };
+
+        if (taskUpdate.newText !== undefined && taskUpdate.newText.trim() !== '' && taskUpdate.newText.trim() !== updatedTaskData.text) {
+          updatedTaskData.text = taskUpdate.newText.trim();
+          modified = true;
+        }
+        if (taskUpdate.status !== undefined && taskUpdate.status !== updatedTaskData.status) {
+          updatedTaskData.status = taskUpdate.status;
+          updatedTaskData.completed = taskUpdate.status === 'Done';
+          modified = true;
+        }
+        if (taskUpdate.priority !== undefined && taskUpdate.priority !== updatedTaskData.priority) {
+          updatedTaskData.priority = taskUpdate.priority;
+          modified = true;
+        }
+        
+        const newAssignedTo = taskUpdate.assignedTo === undefined ? updatedTaskData.assignedTo : (taskUpdate.assignedTo.trim() === '' ? undefined : taskUpdate.assignedTo.trim());
+        if (newAssignedTo !== updatedTaskData.assignedTo) {
+            updatedTaskData.assignedTo = newAssignedTo;
+            modified = true;
+        }
+
+        if (taskUpdate.tags !== undefined) { // AI provides the full new list or undefined for no change
+          // Basic array comparison for change detection
+          if (JSON.stringify(taskUpdate.tags.sort()) !== JSON.stringify((updatedTaskData.tags || []).sort())) {
+            updatedTaskData.tags = taskUpdate.tags;
+            modified = true;
+          }
+        }
+        if (taskUpdate.notes !== undefined && taskUpdate.notes !== (updatedTaskData.notes || '')) {
+          updatedTaskData.notes = taskUpdate.notes;
+          modified = true;
+        }
+
+        if (modified) {
+          updatedTaskData.updatedAt = Date.now();
+          const replaceInTasks = (tasksArray: Task[], originalId: string, newData: Task): Task[] => {
+             return tasksArray.map(t => {
+               if (t.id === originalId) return newData;
+               if (t.subtasks) return { ...t, subtasks: replaceInTasks(t.subtasks, originalId, newData) };
+               return t;
+             });
+          };
+          currentTasksState = replaceInTasks(currentTasksState, taskToEdit.id, updatedTaskData);
+          changesMade++;
+        }
+      } else {
+        console.warn(`Task "${taskUpdate.taskIdentifier}" not found for update by AI.`);
+      }
+    }
+
+
     if (changesMade > 0) {
       setTasks(currentTasksState);
       await saveTasks(currentTasksState);
-      toast({ title: "AI Tasks Processed", description: `${changesMade} update(s) made based on AI instructions.` });
+      toast({ title: "AI Tasks Processed", description: `${changesMade} task operation(s) performed.` });
     } else {
-      toast({ title: "AI Tasks Processed", description: "No changes made by AI or tasks not found." });
+      toast({ title: "AI Tasks Processed", description: "No direct changes made by AI or specified tasks not found." });
     }
   }, [tasks, saveTasks, toast]);
 
@@ -459,3 +519,5 @@ export function useTasks() {
     applyAiTaskOperations,
   };
 }
+
+    
