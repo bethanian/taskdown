@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task, Priority } from '@/lib/types';
+import type { Task, Priority, Attachment } from '@/lib/types';
 import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
 import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
@@ -62,8 +62,15 @@ export function ChecklistView({
     setIsEditDialogOpen(true);
   };
 
-  const handleSaveEdit = (id: string, newText: string, newTags: string[], newPriority: Priority) => {
-    editTask(id, newText, newTags, newPriority);
+  const handleSaveEdit = (
+    id: string, 
+    newText: string, 
+    newTags: string[], 
+    newPriority: Priority,
+    newNotes: string,
+    newAttachments: Attachment[]
+  ) => {
+    editTask(id, newText, newTags, newPriority, newNotes, newAttachments);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import localforage from 'localforage';
-import type { Task, Priority } from '@/lib/types';
+import type { Task, Priority, Attachment } from '@/lib/types';
 import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 
@@ -95,6 +95,8 @@ export function useTasks() {
     return tasksToLoad.map(task => ({
       ...task,
       priority: task.priority || 'none',
+      notes: task.notes || '',
+      attachments: task.attachments || [],
       subtasks: task.subtasks ? loadTasksRecursive(task.subtasks) : [],
     }));
   };
@@ -147,6 +149,8 @@ export function useTasks() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
+      notes: '',
+      attachments: [],
     };
     const updatedTasks = [newTask, ...tasks];
     setTasks(updatedTasks);
@@ -168,6 +172,8 @@ export function useTasks() {
       createdAt: Date.now(),
       updatedAt: Date.now(),
       subtasks: [],
+      notes: '',
+      attachments: [],
     };
     const updatedTasks = addSubtaskRecursive(tasks, parentId, newSubtask);
     setTasks(updatedTasks);
@@ -197,7 +203,14 @@ export function useTasks() {
     toast({ title: "Success", description: "Task deleted." });
   }, [tasks, saveTasks, toast]);
 
-  const editTask = useCallback((id: string, newText: string, newTags: string[], newPriority: Priority) => {
+  const editTask = useCallback((
+    id: string, 
+    newText: string, 
+    newTags: string[], 
+    newPriority: Priority,
+    newNotes?: string,
+    newAttachments?: Attachment[]
+  ) => {
     if (!newText.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
       return;
@@ -207,6 +220,8 @@ export function useTasks() {
       text: newText,
       tags: newTags,
       priority: newPriority,
+      notes: newNotes !== undefined ? newNotes : task.notes,
+      attachments: newAttachments !== undefined ? newAttachments : task.attachments,
       updatedAt: Date.now(),
     });
     const updatedTasks = mapTasksRecursively(tasks, id, updateFn);

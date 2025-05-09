@@ -1,15 +1,17 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task, Priority } from '@/lib/types';
+import type { Task, Priority, Attachment } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, Flag, FlagOff, Check, Plus } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, Flag, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   Accordion,
   AccordionContent,
@@ -45,6 +47,15 @@ const priorityConfig: Record<Priority, { label: string; iconClassName: string; i
   none: { label: 'No Priority', iconClassName: 'text-muted-foreground' },
 };
 
+function getUrlHostname(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    return parsedUrl.hostname;
+  } catch (e) {
+    return url; 
+  }
+}
+
 export function ChecklistItem({ 
   task, 
   onToggleComplete, 
@@ -61,12 +72,12 @@ export function ChecklistItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id, disabled: depth > 0 }); // Disable DND for subtasks
+  } = useSortable({ id: task.id, disabled: depth > 0 }); 
 
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined, // Indentation for subtasks
+    marginLeft: depth > 0 ? `${depth * 1.5}rem` : undefined, 
   };
   
   const currentPriorityConfig = priorityConfig[task.priority || 'none'];
@@ -81,6 +92,8 @@ export function ChecklistItem({
       setShowAddSubtaskInput(false);
     }
   };
+  
+  const hasDetails = (task.notes && task.notes.trim() !== '') || (task.attachments && task.attachments.length > 0);
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -90,12 +103,12 @@ export function ChecklistItem({
         className={cn(
           "mb-2 group transition-all duration-200 shadow-md hover:shadow-xl",
           isDragging && "opacity-80 shadow-2xl z-50",
-          depth > 0 && "bg-card/90" // Slightly different background for subtasks
+          depth > 0 && "bg-card/90" 
         )}
       >
         <CardContent className="p-3 flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            {depth === 0 && ( // Only show drag handle for top-level tasks
+            {depth === 0 && ( 
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -112,7 +125,7 @@ export function ChecklistItem({
                 <TooltipContent>Drag to reorder</TooltipContent>
               </Tooltip>
             )}
-            {depth > 0 && <div className="w-8 shrink-0"></div>} {/* Placeholder for drag handle space */}
+            {depth > 0 && <div className="w-8 shrink-0"></div>} 
 
             <DropdownMenu>
               <Tooltip>
@@ -161,7 +174,7 @@ export function ChecklistItem({
               aria-labelledby={`task-text-${task.id}`}
             />
             
-            <div className="flex-grow space-y-1 min-w-0"> {/* Added min-w-0 for flex shrink */}
+            <div className="flex-grow space-y-1 min-w-0"> 
               <label htmlFor={`task-${task.id}`} className="sr-only">Task text</label>
               <div id={`task-text-${task.id}`} className="cursor-pointer flex items-center" onClick={() => onToggleComplete(task.id)}>
                   <ChecklistItemContent text={task.text} completed={task.completed} />
@@ -209,10 +222,11 @@ export function ChecklistItem({
             </div>
           </div>
 
-          {(showAddSubtaskInput || (task.subtasks && task.subtasks.length > 0)) && (
-            <div className="pl-8"> {/* Indent subtask controls and subtasks themselves */}
+          {/* Subtasks and Details Accordion Area */}
+          {(showAddSubtaskInput || (task.subtasks && task.subtasks.length > 0) || hasDetails) && (
+            <div className="pl-8 mt-1"> 
               {showAddSubtaskInput && (
-                <div className="mt-2 flex gap-2 items-center">
+                <div className="mb-2 flex gap-2 items-center">
                   <Input 
                     value={newSubtaskText}
                     onChange={(e) => setNewSubtaskText(e.target.value)}
@@ -230,7 +244,7 @@ export function ChecklistItem({
               )}
 
               {task.subtasks && task.subtasks.length > 0 && (
-                <Accordion type="single" collapsible className="mt-2 w-full" defaultValue={depth < 1 ? `subtasks-${task.id}`: undefined}>
+                <Accordion type="single" collapsible className="w-full" defaultValue={depth < 1 ? `subtasks-${task.id}`: undefined}>
                   <AccordionItem value={`subtasks-${task.id}`} className="border-b-0">
                     <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-70 data-[state=open]:opacity-100">
                       {task.subtasks.length} Subtask(s)
@@ -251,6 +265,53 @@ export function ChecklistItem({
                     </AccordionContent>
                   </AccordionItem>
                 </Accordion>
+              )}
+              
+              {hasDetails && (
+                 <Accordion type="single" collapsible className="w-full mt-1">
+                    <AccordionItem value={`details-${task.id}`} className="border-b-0">
+                      <AccordionTrigger className="text-xs py-1 px-2 rounded-md hover:bg-muted/50 hover:no-underline flex justify-start data-[state=closed]:opacity-70 data-[state=open]:opacity-100">
+                        <ChevronDown className="h-3 w-3 mr-1 transform transition-transform data-[state=open]:rotate-180" /> Details
+                      </AccordionTrigger>
+                      <AccordionContent className="pt-2 pb-1 px-2 space-y-3">
+                        {task.notes && task.notes.trim() !== '' && (
+                          <div>
+                            <h4 className="text-xs font-semibold mb-1 flex items-center">
+                              <FileText className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                              Notes
+                            </h4>
+                            <div className="prose prose-sm dark:prose-invert max-w-none text-xs p-2 bg-muted/30 rounded-md">
+                              <ReactMarkdown remarkPlugins={[remarkGfm]}>{task.notes}</ReactMarkdown>
+                            </div>
+                          </div>
+                        )}
+                        {task.attachments && task.attachments.length > 0 && (
+                          <div>
+                            <h4 className="text-xs font-semibold mb-1 flex items-center">
+                               <Paperclip className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
+                               Attachments
+                            </h4>
+                            <ul className="space-y-1">
+                              {task.attachments.map(att => (
+                                <li key={att.id} className="flex items-center text-xs">
+                                  <LinkIcon className="h-3.5 w-3.5 mr-1.5 text-muted-foreground shrink-0" />
+                                  <a 
+                                    href={att.value} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    className="text-primary hover:underline truncate"
+                                    title={att.value}
+                                  >
+                                    {att.name || getUrlHostname(att.value)}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </AccordionContent>
+                    </AccordionItem>
+                 </Accordion>
               )}
             </div>
           )}
