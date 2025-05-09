@@ -19,6 +19,20 @@ export const metadata: Metadata = {
   description: 'A modern, developer-focused checklist app.',
 };
 
+const availableThemes = [
+  'light', 
+  'dark', 
+  'sakura', 
+  'aqua', 
+  'leather', 
+  'lightning', 
+  'zen', 
+  'forest', 
+  'ocean', 
+  'desert', 
+  'starlight'
+];
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,6 +46,7 @@ export default function RootLayout({
           defaultTheme="system"
           enableSystem
           disableTransitionOnChange
+          themes={availableThemes} // Added themes prop
         >
           {children}
           <Toaster />
