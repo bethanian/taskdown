@@ -27,7 +27,7 @@ import {
 // --- Supabase Data Mapping Helpers ---
 interface SupabaseTaskRow extends Record<string, any> { // Define a more specific type for Supabase rows
   id: string;
-  text: string;
+  title: string;
   completed: boolean;
   tags: string[] | null;
   priority: Priority | null;
@@ -45,7 +45,7 @@ interface SupabaseTaskRow extends Record<string, any> { // Define a more specifi
 const fromSupabase = (row: SupabaseTaskRow): TaskType => {
         return {
     id: row.id,
-    text: row.text,
+    text: row.title,
     completed: row.completed,
     tags: row.tags || [],
     priority: row.priority || 'none',
@@ -64,7 +64,7 @@ const fromSupabase = (row: SupabaseTaskRow): TaskType => {
 const toSupabaseInsert = (taskText: string, parentId?: string | null): Partial<SupabaseTaskRow> => {
   const now = new Date().toISOString();
       return {
-    text: taskText,
+    title: taskText,
     completed: false,
     tags: [],
     priority: 'none',
