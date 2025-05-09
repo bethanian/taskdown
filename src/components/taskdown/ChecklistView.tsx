@@ -6,8 +6,23 @@ import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
 import type { useTasks } from '@/hooks/useTasks'; // Import the hook type
 import { Skeleton } from '@/components/ui/skeleton';
-import { Card } from '@/components/ui/card'; // Added import
+import { Card } from '@/components/ui/card';
 import Image from 'next/image';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
 
 interface ChecklistViewProps {
   tasks: Task[];
@@ -15,11 +30,28 @@ interface ChecklistViewProps {
   toggleTaskCompletion: ReturnType<typeof useTasks>['toggleTaskCompletion'];
   deleteTask: ReturnType<typeof useTasks>['deleteTask'];
   editTask: ReturnType<typeof useTasks>['editTask'];
+  setTasks: ReturnType<typeof useTasks>['setTasks']; // For DND reordering
+  saveTasks: ReturnType<typeof useTasks>['saveTasks']; // For persisting DND reordering
 }
 
-export function ChecklistView({ tasks, isLoading, toggleTaskCompletion, deleteTask, editTask }: ChecklistViewProps) {
+export function ChecklistView({ 
+  tasks, 
+  isLoading, 
+  toggleTaskCompletion, 
+  deleteTask, 
+  editTask,
+  setTasks,
+  saveTasks
+}: ChecklistViewProps) {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const handleEdit = (task: Task) => {
     setEditingTask(task);
@@ -31,6 +63,18 @@ export function ChecklistView({ tasks, isLoading, toggleTaskCompletion, deleteTa
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
+  
+  function handleDragEnd(event: DragEndEvent) {
+    const {active, over} = event;
+    
+    if (over && active.id !== over.id) {
+      const oldIndex = tasks.findIndex((task) => task.id === active.id);
+      const newIndex = tasks.findIndex((task) => task.id === over.id);
+      const reorderedTasks = arrayMove(tasks, oldIndex, newIndex);
+      setTasks(reorderedTasks);
+      saveTasks(reorderedTasks);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -57,16 +101,27 @@ export function ChecklistView({ tasks, isLoading, toggleTaskCompletion, deleteTa
   }
   
   return (
-    <div>
-      {tasks.map(task => (
-        <ChecklistItem
-          key={task.id}
-          task={task}
-          onToggleComplete={toggleTaskCompletion}
-          onDelete={deleteTask}
-          onEdit={handleEdit}
-        />
-      ))}
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext
+        items={tasks.map(task => task.id)}
+        strategy={verticalListSortingStrategy}
+      >
+        <div>
+          {tasks.map(task => (
+            <ChecklistItem
+              key={task.id}
+              task={task}
+              onToggleComplete={toggleTaskCompletion}
+              onDelete={deleteTask}
+              onEdit={handleEdit}
+            />
+          ))}
+        </div>
+      </SortableContext>
       {editingTask && (
         <EditTaskDialog
           isOpen={isEditDialogOpen}
@@ -75,6 +130,6 @@ export function ChecklistView({ tasks, isLoading, toggleTaskCompletion, deleteTa
           onSave={handleSaveEdit}
         />
       )}
-    </div>
+    </DndContext>
   );
 }

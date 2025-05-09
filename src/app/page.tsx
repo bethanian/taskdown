@@ -9,7 +9,7 @@ import { useTasks } from '@/hooks/useTasks';
 // import { TagFilter } from '@/components/taskdown/TagFilter';
 
 export default function TaskdownPage() {
-  const { tasks, isLoading, addTask, toggleTaskCompletion, deleteTask, editTask } = useTasks();
+  const { tasks, isLoading, addTask, toggleTaskCompletion, deleteTask, editTask, setTasks, saveTasks } = useTasks();
 
   // Basic filtering logic (can be expanded)
   // const [activeFilters, setActiveFilters] = useState<string[]>([]);
@@ -39,6 +39,8 @@ export default function TaskdownPage() {
           toggleTaskCompletion={toggleTaskCompletion}
           deleteTask={deleteTask}
           editTask={editTask}
+          setTasks={setTasks}
+          saveTasks={saveTasks}
         />
       </main>
       <footer className="text-center py-6 text-sm text-muted-foreground">
