@@ -7,12 +7,12 @@ import { ChecklistView } from '@/components/taskdown/ChecklistView';
 import { KanbanView } from '@/components/taskdown/KanbanView'; 
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
-import type { Task } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
 import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
-import { processTaskInput, type ProcessTaskInput, type ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
+import type { ProcessTaskInput, ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
 import { useToast } from '@/hooks/use-toast';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 
@@ -21,18 +21,13 @@ export default function TaskdownPage() {
   const { 
     tasks, 
     isLoading, 
-    addTask, 
+    addTask,
     addSubtask,
-    toggleTaskCompletion, 
-    deleteTask, 
-    editTask, 
-    updateTaskPriority,
-    updateTaskStatus,
-    assignTask,
+    toggleComplete,
+    deleteTask,
+    editTask,
     generateShareLink,
-    setTasks, 
-    saveTasks,
-    applyAiTaskOperations,
+    processAiInput
   } = useTasks();
 
   const [activeFilters, setActiveFilters] = useState<string[]>([]);
@@ -96,19 +91,6 @@ export default function TaskdownPage() {
     return filterWithHierarchy(tasks, currentActiveFilters, currentSearchTerm);
 
   }, [tasks, activeFilters, debouncedSearchTerm]);
-
-  const handleAiProcessTasks = async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
-    try {
-      const output = await processTaskInput(input);
-      if (output) {
-        await applyAiTaskOperations(output);
-      }
-      return output;
-    } catch (e) {
-      console.error("Error processing AI tasks in page:", e);
-      return null;
-    }
-  };
 
   useEffect(() => {
     if (isLoading || tasks.length === 0) return;
@@ -176,6 +158,29 @@ export default function TaskdownPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, isLoading, toast]); // remindedTaskIds is intentionally omitted to allow re-triggering on task changes. Set inside.
 
+  // --- Wrapper functions for editTask --- 
+  const handleUpdateTaskPriority = (taskId: string, priority: Priority) => {
+    editTask(taskId, { priority });
+  };
+
+  const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
+    editTask(taskId, { status });
+  };
+
+  // Wrapper for KanbanView's onEditTask prop
+  const handleKanbanEditTask = (
+    id: string, 
+    text: string, 
+    tags: string[], 
+    priority: Priority, 
+    notes: string, 
+    attachments: Attachment[], 
+    status: TaskStatus, 
+    assignedTo: string | undefined, 
+    dueDate: number | undefined
+  ) => {
+    editTask(id, { text, tags, priority, notes, attachments, status, assignedTo, dueDate });
+  };
 
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
@@ -211,7 +216,7 @@ export default function TaskdownPage() {
           <p className="text-sm text-muted-foreground mb-3">
             Try: "Create Design phase with subtasks: Sketches, Wireframes. Add task: Call John. Remove: Old team meeting."
           </p>
-          <AiTaskInputForm onProcessTasks={handleAiProcessTasks} disabled={isLoading} />
+          <AiTaskInputForm onProcessTasks={processAiInput} disabled={isLoading} /> 
         </div>
         
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
@@ -223,13 +228,11 @@ export default function TaskdownPage() {
           <ChecklistView
             tasks={filteredTasks}
             isLoading={isLoading}
-            toggleTaskCompletion={toggleTaskCompletion}
+            onToggleComplete={toggleComplete}
             deleteTask={deleteTask}
             editTask={editTask}
-            updateTaskPriority={updateTaskPriority}
-            addSubtask={addSubtask}
-            setTasks={setTasks}
-            saveTasks={saveTasks}
+            onUpdatePriority={handleUpdateTaskPriority}
+            onAddSubtask={addSubtask}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
             onGenerateShareLink={generateShareLink}
           />
@@ -238,11 +241,11 @@ export default function TaskdownPage() {
           <KanbanView
             tasks={filteredTasks} 
             isLoading={isLoading}
-            onEditTask={editTask} 
-            onUpdateTaskStatus={updateTaskStatus} 
-            onToggleComplete={toggleTaskCompletion}
+            onEditTask={handleKanbanEditTask}
+            onUpdateTaskStatus={handleUpdateTaskStatus}
+            onToggleComplete={toggleComplete}
             onDeleteTask={deleteTask}
-            onUpdatePriority={updateTaskPriority}
+            onUpdatePriority={handleUpdateTaskPriority}
             onAddSubtask={addSubtask}
             onGenerateShareLink={generateShareLink}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
