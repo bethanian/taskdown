@@ -10,7 +10,6 @@ export function Header() {
         <h1 className="text-2xl font-bold tracking-tight">Taskdown</h1>
       </Link>
       <div className="flex items-center gap-4">
-        {/* Placeholder for TagFilter or other actions */}
         <ThemeToggle />
       </div>
     </header>
