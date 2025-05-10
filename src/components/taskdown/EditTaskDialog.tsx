@@ -30,6 +30,8 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DatePicker } from '@/components/ui/date-picker'; 
 
+const NONE_DEPENDENCY_VALUE = "@_NONE_@"; // Special value for "None" option
+
 interface EditTaskDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
@@ -328,8 +330,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, allTasks, onSave }:
               Depends On
             </Label>
             <Select
-              value={dependentOnId || ''}
-              onValueChange={(value) => setDependentOnId(value === '' ? null : value)}
+              value={dependentOnId || NONE_DEPENDENCY_VALUE} // Use special value if dependentOnId is null
+              onValueChange={(value) => setDependentOnId(value === NONE_DEPENDENCY_VALUE ? null : value)}
             >
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Select a task it depends on..." />
@@ -337,7 +339,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, allTasks, onSave }:
               <SelectContent>
                 <SelectGroup>
                   <SelectLabel>Tasks</SelectLabel>
-                  <SelectItem value="">
+                  <SelectItem value={NONE_DEPENDENCY_VALUE}> {/* Use special value */}
                     <div className="flex items-center">
                       <Link2Off className="h-4 w-4 mr-2 text-muted-foreground" />
                       None
