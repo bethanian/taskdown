@@ -8,7 +8,7 @@ import { RECURRENCE_LABELS } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks, RefreshCw, AlertTriangle } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks, RefreshCw, AlertTriangle, CalendarPlus } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -34,6 +34,8 @@ import { cn } from '@/lib/utils';
 import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 import { useToast } from "@/hooks/use-toast";
+import { useGoogleAuth } from '@/contexts/GoogleAuthContext';
+import { addEventToCalendar, loadGapiClient } from '@/lib/googleCalendarService';
 
 interface ChecklistItemProps {
   task: Task;
@@ -99,11 +101,16 @@ export function ChecklistItem({
   searchTerm,
 }: ChecklistItemProps) {
   const { toast } = useToast();
+  const { isSignedIn, accessToken } = useGoogleAuth();
   const [isClient, setIsClient] = useState(false);
+  const [isSyncingToCalendar, setIsSyncingToCalendar] = useState(false);
 
   useEffect(() => {
     setIsClient(true);
-  }, []);
+    if (isSignedIn) {
+      loadGapiClient().catch(err => console.error("Failed to preload GAPI client:", err));
+    }
+  }, [isSignedIn]);
 
   const {
     attributes,
@@ -163,6 +170,27 @@ export function ChecklistItem({
       }
     }
   };
+
+  const handleSyncToCalendar = async () => {
+    if (!isSignedIn || !accessToken) {
+      toast({ title: "Not Connected", description: "Please connect to Google Calendar first.", variant: "destructive" });
+      return;
+    }
+    if (!task.dueDate) {
+      toast({ title: "No Due Date", description: "Task needs a due date to be synced to calendar.", variant: "default" });
+      return;
+    }
+    setIsSyncingToCalendar(true);
+    try {
+      await addEventToCalendar(accessToken, task);
+      toast({ title: "Synced to Calendar", description: `"${task.text}" added to your Google Calendar.` });
+    } catch (error: any) {
+      console.error("Failed to sync task to calendar:", error);
+      toast({ title: "Sync Failed", description: error.message || "Could not add task to calendar.", variant: "destructive" });
+    } finally {
+      setIsSyncingToCalendar(false);
+    }
+  };
   
   const hasDetails = (task.notes && task.notes.trim() !== '') || (task.attachments && task.attachments.length > 0);
   const isDisabled = task.isBlocked;
@@ -190,8 +218,8 @@ export function ChecklistItem({
                     className={cn("cursor-grab h-7 w-7 opacity-30 group-hover:opacity-100 transition-opacity shrink-0", isDisabled && "cursor-not-allowed opacity-20")}
                     aria-label="Drag to reorder"
                     disabled={isDisabled}
-                    {...(isDisabled ? {} : attributes)} // Only spread attributes if not disabled
-                    {...(isDisabled ? {} : listeners)}  // Only spread listeners if not disabled
+                    {...(isDisabled ? {} : attributes)} 
+                    {...(isDisabled ? {} : listeners)}  
                   >
                     <GripVertical className="h-4 w-4" />
                   </Button>
@@ -322,6 +350,17 @@ export function ChecklistItem({
               </div>
 
               <div className="flex items-center shrink-0 gap-0.5 ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+                {isSignedIn && task.dueDate && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button variant="ghost" size="icon" onClick={handleSyncToCalendar} className="h-7 w-7" disabled={isSyncingToCalendar}>
+                        {isSyncingToCalendar ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarPlus className="h-3.5 w-3.5" />}
+                        <span className="sr-only">Sync to Google Calendar</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Sync to Google Calendar</TooltipContent>
+                  </Tooltip>
+                )}
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button variant="ghost" size="icon" onClick={() => onEdit(task)} className="h-7 w-7">

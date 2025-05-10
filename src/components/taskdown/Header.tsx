@@ -1,6 +1,8 @@
+
 import Link from 'next/link';
 import { ThemeToggle } from './ThemeToggle';
 import { ListChecks } from 'lucide-react';
+import { GoogleConnectButton } from './GoogleConnectButton'; // Import the new component
 
 export function Header() {
   return (
@@ -10,6 +12,7 @@ export function Header() {
         <h1 className="text-2xl font-bold tracking-tight">Taskdown</h1>
       </Link>
       <div className="flex items-center gap-4">
+        <GoogleConnectButton /> 
         <ThemeToggle />
       </div>
     </header>
