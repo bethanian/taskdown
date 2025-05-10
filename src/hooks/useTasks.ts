@@ -279,6 +279,9 @@ export function useTasks() {
       return;
     }
     if (Object.keys(updates).length === 0) {
+      // If there are no actual fields to update, don't proceed.
+      // This can happen if the UI triggers an update without any changes.
+      // console.info("updateTask called with no effective changes for task:", id);
       return;
     }
 
@@ -325,8 +328,16 @@ export function useTasks() {
 
     try {
       const { data: updatedSupabaseTaskData, error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
+      
       if (supabaseError) {
-        throw supabaseError; 
+        // Handle the "No updates provided" case from editTaskSupabase (code 204)
+        if (supabaseError.code === '204' && supabaseError.message === 'No updates provided.') {
+          // console.info("Supabase confirmed no update was necessary for task:", id);
+          // Optimistic updates might have occurred, so ensure UI consistency.
+          await fetchAndSetTasks();
+          return; // Not a "failure"
+        }
+        throw supabaseError; // Re-throw other errors
       }
       
       if (updatedSupabaseTaskData && updates.completed === true) {
@@ -337,11 +348,17 @@ export function useTasks() {
       await fetchAndSetTasks();
 
     } catch (error: any) {
-      console.error("Failed to update task in Supabase, rolling back UI.", error);
+      console.error("Failed to update task in Supabase, rolling back UI.", {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        originalError: error,
+      });
       setTasks(originalTasks); 
       toast({ 
         title: "Update Failed", 
-        description: `Task update failed: ${error.message}. Changes have been reverted.`, 
+        description: `Task update failed: ${error.message || 'Unknown error'}. Changes have been reverted.`, 
         variant: "destructive" 
       });
     }
@@ -379,8 +396,7 @@ export function useTasks() {
     if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
     if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
     if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
-    // Recurrence from AI would need mapping here
-    if ((updatesFromAi as any).recurrence !== undefined) supabaseUpdates.recurrence = (updatesFromAi as any).recurrence;
+    if (updatesFromAi.recurrence !== undefined) supabaseUpdates.recurrence = updatesFromAi.recurrence;
 
 
     if (Object.keys(supabaseUpdates).length === 0) {
@@ -444,9 +460,8 @@ export function useTasks() {
           if (newTaskId) {
             newlyCreatedParentsMap.set(taskToAdd.text, newTaskId);
             operationsPerformed = true;
-            // If AI provides recurrence for new task, it should be handled here
-            if ((taskToAdd as any).recurrence) {
-                await updateTask(newTaskId, { recurrence: (taskToAdd as any).recurrence });
+            if (taskToAdd.recurrence) {
+                await updateTask(newTaskId, { recurrence: taskToAdd.recurrence });
             }
           }
         }
@@ -470,8 +485,8 @@ export function useTasks() {
           const newSubtaskId = await addTask(taskToAdd.text, parentId ?? undefined);
            if (newSubtaskId) {
             operationsPerformed = true;
-            if ((taskToAdd as any).recurrence) {
-                 await updateTask(newSubtaskId, { recurrence: (taskToAdd as any).recurrence });
+            if (taskToAdd.recurrence) {
+                 await updateTask(newSubtaskId, { recurrence: taskToAdd.recurrence });
             }
           }
         }
@@ -495,7 +510,6 @@ export function useTasks() {
         for (const taskToUpdate of aiOutput.tasksToUpdate) {
           const task = findTaskByTextRecursive(currentTasksStateForAIUpdate, taskToUpdate.taskIdentifier); 
           if (task) {
-            // Ensure AiUpdateTaskDetails is correctly cast or mapped to SupabaseTaskUpdatePayload if needed
             await editTask(task.id, taskToUpdate as AiUpdateTaskDetails); 
             operationsPerformed = true;
           } else {
@@ -517,7 +531,7 @@ export function useTasks() {
       toast({ title: "AI Error", description: error.message || "Failed to process AI command.", variant: "destructive" });
       return null;
     }
-  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow, updateTask]);
+  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, updateTask]); // Removed processAiInputFlow from deps as it's a static import
 
   return { 
     tasks, 

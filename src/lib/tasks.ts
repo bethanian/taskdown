@@ -44,7 +44,10 @@ export async function editTask(
     return { data: null, error: { message: 'Task ID is required.', details: '', hint: '', code: '400' } as PostgrestError };
   }
   if (Object.keys(updates).length === 0) {
-    return { data: null, error: { message: 'No updates provided.', details: '', hint: '', code: '400' } as PostgrestError };
+    // This case should ideally be caught by the calling function (e.g., in useTasks)
+    // to prevent an unnecessary API call. If it still reaches here,
+    // it means no actual update would occur in the DB.
+    return { data: null, error: { message: 'No updates provided.', details: 'Update object was empty.', hint: 'No database operation was performed.', code: '204' } as PostgrestError };
   }
 
   const { data, error } = await supabase
@@ -55,7 +58,12 @@ export async function editTask(
     .single(); // .single() assumes the ID is unique and will return one row or an error
 
   if (error) {
-    console.error('Error editing task:', error);
+    console.error(`Error editing task (ID: ${taskId}):`, {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
   }
   return { data: data as Task | null, error };
 }
@@ -83,7 +91,12 @@ export async function toggleComplete(
     .single();
 
   if (error) {
-    console.error('Error toggling task completion:', error);
+    console.error('Error toggling task completion:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
   }
   return { data: data as Task | null, error };
 }
@@ -102,9 +115,6 @@ export async function generateShareLink(
     return { data: null, error: { message: 'Task ID is required.', details: '', hint: '', code: '400' } as PostgrestError };
   }
 
-  // Simple way to generate a somewhat unique ID. For true uniqueness and security,
-  // consider crypto.randomUUID() if in a Node.js env or a library like nanoid.
-  // Supabase Edge Functions would be a good place for crypto.randomUUID().
   const newShareId = `shr_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
 
   const { data, error } = await supabase
@@ -115,7 +125,12 @@ export async function generateShareLink(
     .single();
 
   if (error) {
-    console.error('Error generating share link:', error);
+    console.error('Error generating share link:', {
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      code: error.code,
+    });
   }
   return { data: data as Task | null, error };
 }
