@@ -13,11 +13,13 @@ import type { TaskUpdate } from '@/lib/tasks';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
 import { FilterSortControls } from '@/components/taskdown/FilterSortControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
-import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
+import { List, LayoutGrid, Sparkles, Download } from 'lucide-react'; 
 import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
 import type { ProcessTaskInput, ProcessTaskOutput } from '@/ai/flows/process-task-input-flow';
 import { useToast } from '@/hooks/use-toast';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import { generateTasksPdf } from '@/lib/pdfGenerator';
 
 
 export default function TaskdownPage() {
@@ -32,9 +34,9 @@ export default function TaskdownPage() {
     updateTaskPriority,
     generateShareLink,
     processAiInput,
-    filters: currentHookFilters, // Renamed to avoid conflict with local state if any
+    filters: currentHookFilters, 
     setFilters: setCurrentHookFilters,
-    sort: currentHookSort, // Renamed
+    sort: currentHookSort, 
     setSort: setCurrentHookSort,
   } = useTasks();
 
@@ -55,12 +57,10 @@ export default function TaskdownPage() {
     };
   }, [rawSearchTerm]);
   
-  // Client-side filtering (tags and search term) happens *after* Supabase filtering/sorting
   const clientFilteredTasks = React.useMemo(() => {
     const currentSearchTerm = debouncedSearchTerm.trim().toLowerCase();
     const currentActiveTagFilters = activeTagFilters.map(f => f.toLowerCase());
 
-    // If no client-side filters are active, return tasks as fetched from Supabase
     if (currentActiveTagFilters.length === 0 && currentSearchTerm === '') {
       return tasks; 
     }
@@ -90,8 +90,6 @@ export default function TaskdownPage() {
           if (taskItselfIsKept || filteredSubtasks.length > 0) {
             return {
               ...task,
-              // If task itself matches, keep all its subtasks that also match the *search term only* (tags are for parent matching)
-              // If task itself does NOT match, but subtasks do, then only keep those matching subtasks.
               subtasks: taskItselfIsKept 
                 ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], clientSearchTerm) : []) 
                 : filteredSubtasks, 
@@ -207,7 +205,10 @@ export default function TaskdownPage() {
   const handleApplyFiltersAndSort = (newFilters: TaskFilters, newSort: TaskSort) => {
     setCurrentHookFilters(newFilters);
     setCurrentHookSort(newSort);
-    // useTasks hook will automatically re-fetch due to useEffect dependency on filters/sort
+  };
+
+  const handleDownloadPdf = () => {
+    generateTasksPdf(clientFilteredTasks);
   };
 
   return (
@@ -226,6 +227,10 @@ export default function TaskdownPage() {
             currentSort={currentHookSort}
             onApply={handleApplyFiltersAndSort}
           />
+          <Button variant="outline" onClick={handleDownloadPdf}>
+            <Download className="h-4 w-4 mr-2" />
+            PDF
+          </Button>
           <Tabs defaultValue="list" value={activeView} onValueChange={(value) => setActiveView(value as 'list' | 'kanban')} className="w-full sm:w-auto">
             <TabsList className="grid w-full grid-cols-2 sm:w-auto">
               <TabsTrigger value="list" className="flex items-center gap-2">
@@ -261,7 +266,7 @@ export default function TaskdownPage() {
 
         {activeView === 'list' && (
           <ChecklistView
-            tasks={clientFilteredTasks} // Use client-side filtered tasks
+            tasks={clientFilteredTasks} 
             isLoading={isLoading}
             onToggleComplete={toggleComplete}
             deleteTask={deleteTask}
@@ -274,7 +279,7 @@ export default function TaskdownPage() {
         )}
         {activeView === 'kanban' && (
           <KanbanView
-            tasks={clientFilteredTasks}  // Use client-side filtered tasks
+            tasks={clientFilteredTasks}  
             isLoading={isLoading}
             onEditTask={handleKanbanEditTask}
             onUpdateTaskStatus={handleUpdateTaskStatus}
