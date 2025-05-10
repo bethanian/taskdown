@@ -118,5 +118,4 @@ export async function generateShareLink(
     console.error('Error generating share link:', error);
   }
   return { data: data as Task | null, error };
-} 
-```
+}

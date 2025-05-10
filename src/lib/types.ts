@@ -43,6 +43,3 @@ export interface Task {
 }
 
 export type Tag = string;
-
-
-```
