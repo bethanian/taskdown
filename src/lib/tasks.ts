@@ -1,3 +1,4 @@
+
 // src/lib/tasks.ts
 
 import { supabase } from './supabaseClient'; // Assuming supabaseClient.ts exports a 'supabase' instance
@@ -44,9 +45,6 @@ export async function editTask(
     return { data: null, error: { message: 'Task ID is required.', details: '', hint: '', code: '400' } as PostgrestError };
   }
   if (Object.keys(updates).length === 0) {
-    // This case should ideally be caught by the calling function (e.g., in useTasks)
-    // to prevent an unnecessary API call. If it still reaches here,
-    // it means no actual update would occur in the DB.
     return { data: null, error: { message: 'No updates provided.', details: 'Update object was empty.', hint: 'No database operation was performed.', code: '204' } as PostgrestError };
   }
 
@@ -58,10 +56,12 @@ export async function editTask(
     .single(); // .single() assumes the ID is unique and will return one row or an error
 
   if (error) {
-    // Log details explicitly in the string part of console.error
-    // as the raw error object sometimes stringifies to "{}" in the Next.js overlay.
     const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
-    console.error(`Error editing task (ID: ${taskId}): ${errorDetailsString}`, error);
+    let userAdvice = "";
+    if (error.message.includes("Could not find the") && error.message.includes("column") && error.message.includes("in the schema cache")) {
+      userAdvice = "ADVICE: This might be due to a stale schema cache in Supabase or the column not existing in the database. Try reloading the schema in your Supabase dashboard (Project Settings > API > Reload schema) or ensure the column is correctly migrated.";
+    }
+    console.error(`Error editing task (ID: ${taskId}): ${errorDetailsString}. ${userAdvice}`, error);
   }
   return { data: data as Task | null, error };
 }
@@ -90,7 +90,11 @@ export async function toggleComplete(
 
   if (error) {
     const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
-    console.error(`Error toggling task completion (ID: ${taskId}): ${errorDetailsString}`, error);
+    let userAdvice = "";
+    if (error.message.includes("Could not find the") && error.message.includes("column") && error.message.includes("in the schema cache")) {
+      userAdvice = "ADVICE: This might be due to a stale schema cache in Supabase or the column not existing in the database. Try reloading the schema in your Supabase dashboard (Project Settings > API > Reload schema) or ensure the column is correctly migrated.";
+    }
+    console.error(`Error toggling task completion (ID: ${taskId}): ${errorDetailsString}. ${userAdvice}`, error);
   }
   return { data: data as Task | null, error };
 }
@@ -120,7 +124,11 @@ export async function generateShareLink(
 
   if (error) {
     const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
-    console.error(`Error generating share link (ID: ${taskId}): ${errorDetailsString}`, error);
+    let userAdvice = "";
+    if (error.message.includes("Could not find the") && error.message.includes("column") && error.message.includes("in the schema cache")) {
+      userAdvice = "ADVICE: This might be due to a stale schema cache in Supabase or the column not existing in the database. Try reloading the schema in your Supabase dashboard (Project Settings > API > Reload schema) or ensure the column is correctly migrated.";
+    }
+    console.error(`Error generating share link (ID: ${taskId}): ${errorDetailsString}. ${userAdvice}`, error);
   }
   return { data: data as Task | null, error };
 }
