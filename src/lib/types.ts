@@ -40,6 +40,9 @@ export interface Task {
   assignedTo?: string; // Optional: name or ID of the person the task is assigned to
   shareId?: string; // Optional: unique ID for generating a shareable link
   recurrence: RecurrenceRule; // Added recurrence field
+  dependentOnId?: string | null; // ID of the task this task depends on
+  dependentOnTaskName?: string; // Name of the task this task depends on (for UI display)
+  isBlocked?: boolean; // True if this task is blocked by an incomplete dependency
 }
 
 export type Tag = string;

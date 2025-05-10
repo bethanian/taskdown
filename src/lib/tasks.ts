@@ -23,6 +23,7 @@ export interface Task {
   attachments?: any | null; // jsonb, nullable
   user_id?: string | null; // uuid, nullable (FK to auth.users.id)
   recurrence: RecurrenceRule; // text, default: "none"
+  dependent_on?: string | null; // uuid, nullable (FK to tasks.id for dependencies)
 }
 
 // Type for the fields that can be updated in editTask
@@ -44,7 +45,11 @@ export async function editTask(
   if (!taskId) {
     return { data: null, error: { message: 'Task ID is required.', details: '', hint: '', code: '400' } as PostgrestError };
   }
+  // Check if updates object is empty. If so, return early to avoid unnecessary DB call.
   if (Object.keys(updates).length === 0) {
+    // Consider this not an error, but a no-op.
+    // You might want to return the existing task or a specific message.
+    // For now, returning a custom "error-like" object to indicate no operation.
     return { data: null, error: { message: 'No updates provided.', details: 'Update object was empty.', hint: 'No database operation was performed.', code: '204' } as PostgrestError };
   }
 
@@ -56,6 +61,8 @@ export async function editTask(
     .single(); // .single() assumes the ID is unique and will return one row or an error
 
   if (error) {
+    // It's better to log a string representation of the error details,
+    // as the raw error object sometimes stringifies to "{}" in the Next.js overlay.
     const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
     let userAdvice = "";
     if (error.message.includes("Could not find the") && error.message.includes("column") && error.message.includes("in the schema cache")) {
@@ -113,6 +120,7 @@ export async function generateShareLink(
     return { data: null, error: { message: 'Task ID is required.', details: '', hint: '', code: '400' } as PostgrestError };
   }
 
+  // Generate a more robust unique ID
   const newShareId = `shr_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 7)}`;
 
   const { data, error } = await supabase

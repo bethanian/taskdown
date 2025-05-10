@@ -17,7 +17,8 @@ import {
 import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
 
 
-interface SupabaseTaskRow extends Record<string, any> { 
+// Reflects the Supabase table structure from `taskdown.md`
+interface SupabaseTaskRow extends Record<string, any> { // Allows for other columns if any
   id: string;
   title: string;
   completed: boolean;
@@ -32,9 +33,11 @@ interface SupabaseTaskRow extends Record<string, any> {
   assigned_to: string | null;
   share_id: string | null;
   parent_id: string | null;
-  recurrence: RecurrenceRule | null; // Added recurrence
+  recurrence: RecurrenceRule | null;
+  dependent_on: string | null; // Added dependent_on
 }
 
+// Converts a Supabase row to our frontend TaskType
 const fromSupabase = (row: SupabaseTaskRow): TaskType => {
   return {
     id: row.id,
@@ -42,57 +45,70 @@ const fromSupabase = (row: SupabaseTaskRow): TaskType => {
     completed: row.completed,
     tags: row.tags || [],
     priority: row.priority || 'none',
-    status: row.status || DEFAULT_TASK_STATUS,
+    status: row.status || DEFAULT_TASK_STATUS, // Default if null
     createdAt: new Date(row.created_at).getTime(),
     updateAt: new Date(row.update_at).getTime(),
     dueDate: row.due_date ? new Date(row.due_date).getTime() : undefined,
-    subtasks: [], 
+    subtasks: [], // Initialize as empty, will be populated by hierarchy builder
     notes: row.notes || '',
     attachments: row.attachments || [],
     assignedTo: row.assigned_to || undefined,
     shareId: row.share_id || undefined,
-    recurrence: row.recurrence || DEFAULT_RECURRENCE_RULE, // Added recurrence
+    recurrence: row.recurrence || DEFAULT_RECURRENCE_RULE,
+    dependentOnId: row.dependent_on || null, // Map dependent_on
+    isBlocked: false, // Default to false, will be calculated
+    // dependentOnTaskName is resolved in buildHierarchyAndResolveDependenciesRecursive
   };
 };
 
-const toSupabaseInsert = (
-  taskText: string, 
-  parentId?: string | null,
-  recurrence?: RecurrenceRule,
-  dueDate?: string | null
-): Partial<SupabaseTaskRow> => {
-  const now = new Date().toISOString();
-  return {
-    title: taskText,
-    completed: false,
-    tags: [],
-    priority: 'none',
-    status: DEFAULT_TASK_STATUS,
-    created_at: now, 
-    update_at: now, 
-    due_date: dueDate || null,
-    notes: '',
-    attachments: [],
-    assigned_to: null,
-    share_id: null,
-    parent_id: parentId || null,
-    recurrence: recurrence || DEFAULT_RECURRENCE_RULE, // Added recurrence
-  };
+// Helper function to find a task by ID in a hierarchical structure
+const findTaskByIdRecursive = (tasksToSearch: TaskType[], id: string): TaskType | null => {
+  for (const task of tasksToSearch) {
+    if (task.id === id) {
+      return task;
+    }
+    if (task.subtasks && task.subtasks.length > 0) {
+      const foundInSubtask = findTaskByIdRecursive(task.subtasks, id);
+      if (foundInSubtask) {
+        return foundInSubtask;
+      }
+    }
+  }
+  return null;
 };
 
-const buildHierarchyRecursive = (
-    items: Array<TaskType & { db_parent_id: string | null }>,
-    parentId: string | null
-  ): TaskType[] => {
+
+// Builds the task hierarchy and resolves dependency names
+const buildHierarchyAndResolveDependenciesRecursive = (
+  items: Array<TaskType & { db_parent_id: string | null }>, // items from DB with temporary db_parent_id
+  parentId: string | null,
+  allTasksFlat: TaskType[] // Pass all flat tasks for dependency lookup
+): TaskType[] => {
   return items
     .filter(item => item.db_parent_id === parentId)
-    .map(item => ({
-      ...item,
-      subtasks: buildHierarchyRecursive(items, item.id),
-    }))
-    .sort((a, b) => b.createdAt - a.createdAt); 
+    .map(item => {
+      let isBlocked = false;
+      let dependentOnTaskName: string | undefined = undefined;
+      if (item.dependentOnId) {
+        // Find the dependency in the flat list of all tasks
+        const dependencyTask = allTasksFlat.find(t => t.id === item.dependentOnId);
+        if (dependencyTask && !dependencyTask.completed) {
+          isBlocked = true;
+          dependentOnTaskName = dependencyTask.text;
+        }
+      }
+      return {
+        ...item,
+        subtasks: buildHierarchyAndResolveDependenciesRecursive(items, item.id, allTasksFlat),
+        isBlocked,
+        dependentOnTaskName,
+      };
+    })
+    .sort((a, b) => b.createdAt - a.createdAt); // Or your preferred sorting
 };
 
+
+// Helper to find a task by text, used by AI processing
 const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskType | null => {
   for (const task of tasksToSearch) {
     if (task.text === text) {
@@ -108,6 +124,7 @@ const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskT
   return null;
 };
 
+// Helper to update a task in a hierarchical list (immutable)
 const updateTaskInList = (
   taskList: TaskType[],
   taskId: string,
@@ -124,6 +141,7 @@ const updateTaskInList = (
   });
 };
 
+// Calculate next due date for recurring tasks
 function calculateNextDueDate(currentDueDateMs: number, recurrence: RecurrenceRule): Date | null {
   const currentDate = new Date(currentDueDateMs);
   switch (recurrence) {
@@ -146,12 +164,13 @@ export function useTasks() {
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
+  // Fetches all tasks and rebuilds the hierarchy
   const fetchAndSetTasks = useCallback(async () => {
     setIsLoading(true);
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false }); // Or your preferred default order
 
     if (error) {
       console.error("Failed to load tasks from Supabase", error);
@@ -162,11 +181,21 @@ export function useTasks() {
       });
       setTasks([]);
     } else if (data) {
-      const allTasksMapped = data.map(row => {
-        const mappedTask = fromSupabase(row as SupabaseTaskRow);
+      // First, map all Supabase rows to flat TaskType objects
+      const allTasksFlatMapped = data.map(row => fromSupabase(row as SupabaseTaskRow));
+      
+      // Then, create a temporary list with db_parent_id for hierarchy building
+      const allTasksWithDbParentId = data.map(row => {
+        const mappedTask = fromSupabase(row as SupabaseTaskRow); // Use the same mapping
         return { ...mappedTask, db_parent_id: (row as SupabaseTaskRow).parent_id };
       });
-      const hierarchicalTasks = buildHierarchyRecursive(allTasksMapped, null);
+
+      // Build the hierarchy using the temporary list and resolve dependencies using the flat list
+      const hierarchicalTasks = buildHierarchyAndResolveDependenciesRecursive(
+        allTasksWithDbParentId, 
+        null, // Start with top-level tasks (parent_id is null)
+        allTasksFlatMapped // Pass the flat list for dependency resolution
+      );
       setTasks(hierarchicalTasks);
     } else {
       setTasks([]);
@@ -174,10 +203,12 @@ export function useTasks() {
     setIsLoading(false);
   }, [toast]);
 
+
   useEffect(() => {
     fetchAndSetTasks();
   }, [fetchAndSetTasks]);
 
+  // Internal function to handle adding tasks, allowing more parameters from AI
   const addTaskInternal = useCallback(async (
     text: string, 
     parentId?: string, 
@@ -188,12 +219,31 @@ export function useTasks() {
     priority?: Priority,
     assignedTo?: string,
     attachments?: Attachment[],
-    status?: TaskStatus
+    status?: TaskStatus,
+    dependentOnId?: string | null, // Added dependentOnId
+    dependentOnTaskText?: string // For AI input to resolve dependency
   ): Promise<string | null> => {
     if (!text.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
       return null;
     }
+
+    let actualDependentOnId = dependentOnId;
+    // If AI provides dependentOnTaskText and dependentOnId is not yet resolved
+    if (dependentOnTaskText && !actualDependentOnId) {
+        // It's important to use the most current task list for this check
+        const existingTasks = tasks; // Use current state to find dependency
+        const dependency = findTaskByTextRecursive(existingTasks, dependentOnTaskText);
+        if (dependency) {
+            actualDependentOnId = dependency.id;
+        } else {
+            toast({ title: "Warning", description: `Could not find task "${dependentOnTaskText}" to set as dependency.` });
+            // Optionally, you could choose to not set the dependency or handle this as an error
+        }
+    }
+
+
+    // Prepare payload for Supabase
     const taskPayload: Partial<SupabaseTaskRow> = {
       title: text,
       parent_id: parentId || null,
@@ -205,9 +255,10 @@ export function useTasks() {
       assigned_to: assignedTo || null,
       attachments: attachments || [],
       status: status || DEFAULT_TASK_STATUS,
-      completed: false,
+      completed: false, // New tasks are not completed
       created_at: new Date().toISOString(),
       update_at: new Date().toISOString(),
+      dependent_on: actualDependentOnId || null, // Use resolved or provided dependentOnId
     };
 
     const { data: newSupabaseTask, error } = await supabase
@@ -223,43 +274,66 @@ export function useTasks() {
     }
     if (newSupabaseTask) {
       toast({ title: "Success", description: parentId ? "Subtask added." : "Task added." });
-      await fetchAndSetTasks(); 
+      await fetchAndSetTasks(); // Re-fetch to update UI with new task and hierarchy
       return (newSupabaseTask as SupabaseTaskRow).id;
     } else {
+      // This case should ideally not happen if error is null
       toast({ title: "Error", description: "Task added but no data returned.", variant: "destructive" });
       return null;
     }
-  }, [toast, fetchAndSetTasks]);
+  }, [toast, fetchAndSetTasks, tasks]); // tasks dependency for findTaskByTextRecursive
   
+  // Public addTask function (simplified for basic UI usage)
   const addTask = useCallback(async (text: string, parentId?: string): Promise<string | null> => {
+    // Calls the internal function with fewer parameters for typical UI additions
     return addTaskInternal(text, parentId);
   }, [addTaskInternal]);
 
 
+  // Handles creation of new recurring task instance
   const handleRecurrence = useCallback(async (completedTask: TaskType) => {
     if (!completedTask.recurrence || completedTask.recurrence === 'none' || !completedTask.dueDate) {
-      return;
+      return; // Not a recurring task or no due date to recur from
     }
 
     const nextDueDate = calculateNextDueDate(completedTask.dueDate, completedTask.recurrence);
     if (!nextDueDate) {
-      return;
+      return; // Recurrence is 'none' or calculation failed
     }
 
-    const newRecurringTask = {
+    // Find the parent_id if the completed task was a subtask
+    // This requires searching the current hierarchical `tasks` state
+    let parentIdForNewRecurring: string | null = null;
+    const findParentRecursive = (taskList: TaskType[], childId: string): string | null => {
+        for (const task of taskList) {
+            if (task.subtasks?.some(st => st.id === childId)) {
+                return task.id;
+            }
+            if (task.subtasks) {
+                const foundParentId = findParentRecursive(task.subtasks, childId);
+                if (foundParentId) return foundParentId;
+            }
+        }
+        return null;
+    };
+    parentIdForNewRecurring = findParentRecursive(tasks, completedTask.id);
+
+
+    const newRecurringTask: Partial<SupabaseTaskRow> = {
       title: completedTask.text,
       notes: completedTask.notes,
       tags: completedTask.tags,
       priority: completedTask.priority,
       assigned_to: completedTask.assignedTo,
       attachments: completedTask.attachments,
-      recurrence: completedTask.recurrence,
-      parent_id: (tasks.find(t => t.subtasks?.some(st => st.id === completedTask.id))?.id) || null, // Keep parent_id if it was a subtask
+      recurrence: completedTask.recurrence, // Keep the same recurrence rule
+      parent_id: parentIdForNewRecurring, // Set parent_id if it was a subtask
       due_date: nextDueDate.toISOString(),
-      completed: false,
-      status: DEFAULT_TASK_STATUS,
+      completed: false, // New instance is not completed
+      status: DEFAULT_TASK_STATUS, // Reset status
       created_at: new Date().toISOString(),
       update_at: new Date().toISOString(),
+      dependent_on: completedTask.dependentOnId || null, // Preserve dependency if any
     };
 
     const { error: insertError } = await supabase.from('tasks').insert(newRecurringTask).select().single();
@@ -269,7 +343,7 @@ export function useTasks() {
       toast({ title: "Error", description: `Failed to create next recurring task: ${insertError.message}`, variant: "destructive" });
     } else {
       toast({ title: "Task Recurred", description: `New instance of "${completedTask.text}" created.`});
-      // Don't call fetchAndSetTasks here as it will be called by the outer function (toggleComplete or updateTask)
+      // The calling function (toggleComplete or updateTask) will call fetchAndSetTasks
     }
   }, [toast, tasks]); // tasks is needed to find parent_id
 
@@ -278,27 +352,38 @@ export function useTasks() {
       toast({ title: "Error", description: "Task ID is required for updating.", variant: "destructive" });
       return;
     }
+    
+    // Prevent self-dependency
+    const existingTask = findTaskByIdRecursive(tasks, id);
+    if (updates.dependent_on === id && id) { // Check if dependent_on is being set to the task's own ID
+        toast({ title: "Error", description: "A task cannot depend on itself.", variant: "destructive" });
+        return;
+    }
+    // More complex circular dependency checks (e.g., A -> B -> A) would require graph traversal.
+
     if (Object.keys(updates).length === 0) {
-      // If there are no actual fields to update, don't proceed.
-      // This can happen if the UI triggers an update without any changes.
-      // console.info("updateTask called with no effective changes for task:", id);
-      return;
+      // toast({ title: "Info", description: "No changes detected to update." });
+      return; // No actual updates to perform
     }
 
-    const originalTasks = [...tasks]; // Shallow copy for optimistic rollback
+    // Optimistic UI update (optional, but good for UX)
+    const originalTasks = [...tasks]; // Shallow copy for potential rollback
 
+    // Helper to apply updates to the TaskType structure for optimistic UI
     const applyOptimisticUpdates = (task: TaskType): TaskType => {
       const taskTypeUpdates: Partial<TaskType> = {};
       if (updates.title !== undefined) taskTypeUpdates.text = updates.title;
       if (updates.completed !== undefined) taskTypeUpdates.completed = updates.completed;
-      if (updates.tags !== undefined) taskTypeUpdates.tags = updates.tags || []; 
+      if (updates.tags !== undefined) taskTypeUpdates.tags = updates.tags || []; // Ensure it's an array
       
+      // Handle Priority type assertion carefully
       if (updates.priority !== undefined) {
         const validPriorities: Priority[] = ['high', 'medium', 'low', 'none'];
         if (validPriorities.includes(updates.priority as Priority)) {
           taskTypeUpdates.priority = updates.priority as Priority;
         } else {
-          taskTypeUpdates.priority = 'none';
+          // Default or handle invalid priority from Supabase if needed
+          taskTypeUpdates.priority = 'none'; 
         }
       }
 
@@ -310,52 +395,55 @@ export function useTasks() {
         }
       }
       if (updates.recurrence !== undefined) taskTypeUpdates.recurrence = updates.recurrence as RecurrenceRule;
-
-
       if (updates.notes !== undefined) taskTypeUpdates.notes = updates.notes || '';
       if (updates.attachments !== undefined) taskTypeUpdates.attachments = updates.attachments || [];
       if (updates.assigned_to !== undefined) taskTypeUpdates.assignedTo = updates.assigned_to || undefined;
       if (updates.due_date !== undefined) taskTypeUpdates.dueDate = updates.due_date ? new Date(updates.due_date).getTime() : undefined;
-      
-      taskTypeUpdates.updateAt = new Date().getTime();
+      if (updates.dependent_on !== undefined) taskTypeUpdates.dependentOnId = updates.dependent_on; // Update dependentOnId
 
+      taskTypeUpdates.updateAt = new Date().getTime(); // Update timestamp
       return { ...task, ...taskTypeUpdates };
     };
     
     setTasks(prevTasks => updateTaskInList(prevTasks, id, applyOptimisticUpdates));
 
+    // Prepare payload for Supabase (ensure update_at is current)
     const payloadForSupabase = { ...updates, update_at: new Date().toISOString() };
 
     try {
       const { data: updatedSupabaseTaskData, error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
       
       if (supabaseError) {
-        // Handle the "No updates provided" case from editTaskSupabase (code 204)
+        // If Supabase says no updates were provided (e.g., due to RLS or no actual change in DB),
+        // we still might want to re-fetch if our optimistic update was too aggressive or incorrect.
         if (supabaseError.code === '204' && supabaseError.message === 'No updates provided.') {
-          // console.info("Supabase confirmed no update was necessary for task:", id);
-          // Optimistic updates might have occurred, so ensure UI consistency.
+          // This might mean the data was already as requested, or RLS prevented the update.
+          // Re-fetching ensures UI consistency with the database.
           await fetchAndSetTasks();
-          return; // Not a "failure"
+          return; 
         }
-        throw supabaseError; // Re-throw other errors
+        throw supabaseError; // Re-throw other errors to be caught below
       }
       
+      // If the task was marked completed and is recurring, handle recurrence
       if (updatedSupabaseTaskData && updates.completed === true) {
+        // Convert SupabaseTask to TaskType for handleRecurrence
+        // Assuming updatedSupabaseTaskData is a single Task object from Supabase
         const taskForRecurrence = fromSupabase(updatedSupabaseTaskData as unknown as SupabaseTaskRow); 
         await handleRecurrence(taskForRecurrence);
       }
-      // After all operations (including potential recurrence), refetch to ensure UI consistency.
-      await fetchAndSetTasks();
+      await fetchAndSetTasks(); // Re-fetch to get the latest state including hierarchy and dependencies
 
     } catch (error: any) {
+      // Rollback optimistic UI update on error
       console.error("Failed to update task in Supabase, rolling back UI.", {
         message: error.message,
         details: error.details,
         hint: error.hint,
         code: error.code,
-        originalError: error,
+        originalError: error, // For more detailed debugging if needed
       });
-      setTasks(originalTasks); 
+      setTasks(originalTasks); // Revert to the state before optimistic update
       toast({ 
         title: "Update Failed", 
         description: `Task update failed: ${error.message || 'Unknown error'}. Changes have been reverted.`, 
@@ -366,10 +454,30 @@ export function useTasks() {
 
 
   const addSubtask = useCallback(async (parentId: string, text: string) => {
+    // Calls the internal function, specifying the parentId
     return addTask(text, parentId);
   }, [addTask]);
 
   const deleteTask = useCallback(async (id: string) => {
+    // Before deleting, check if this task is a dependency for other tasks
+    const allFlatTasks = tasks.reduce((acc, task) => {
+        acc.push(task);
+        if (task.subtasks) acc.push(...task.subtasks.flat()); // Simplified flattening for this check
+        return acc;
+    }, [] as TaskType[]);
+
+    const dependentTasks = allFlatTasks.filter(t => t.dependentOnId === id);
+    if (dependentTasks.length > 0) {
+      const taskToDelete = findTaskByIdRecursive(tasks, id);
+      toast({
+        title: "Deletion Blocked",
+        description: `Cannot delete task "${taskToDelete?.text || id}". It is a dependency for: ${dependentTasks.map(dt => `"${dt.text}"`).join(', ')}. Please remove dependencies first.`,
+        variant: "destructive",
+        duration: 7000, // Longer duration for important messages
+      });
+      return;
+    }
+
     const { error } = await supabase
       .from('tasks')
       .delete()
@@ -380,23 +488,41 @@ export function useTasks() {
       toast({ title: "Error", description: `Failed to delete task: ${error.message}`, variant: "destructive" });
     } else {
       toast({ title: "Success", description: "Task deleted." });
-      await fetchAndSetTasks();
+      await fetchAndSetTasks(); // Re-fetch to update UI
     }
-  }, [toast, fetchAndSetTasks]);
+  }, [toast, fetchAndSetTasks, tasks]); // tasks needed for dependency check
   
+  // Edit task based on AI input
   const editTask = useCallback(async (id: string, updatesFromAi: AiUpdateTaskDetails) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required for AI editing.", variant: "destructive" });
       return;
     }
     const supabaseUpdates: SupabaseTaskUpdatePayload = {};
+    // Map AI fields to Supabase fields
     if (updatesFromAi.newText !== undefined) supabaseUpdates.title = updatesFromAi.newText;
     if (updatesFromAi.status !== undefined) supabaseUpdates.status = updatesFromAi.status;
     if (updatesFromAi.priority !== undefined) supabaseUpdates.priority = updatesFromAi.priority;
-    if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
+    if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo; // Handle unassignment
     if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
     if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
     if (updatesFromAi.recurrence !== undefined) supabaseUpdates.recurrence = updatesFromAi.recurrence;
+    
+    // Resolve dependentOnTaskText to dependent_on ID
+    if (updatesFromAi.dependentOnTaskText) {
+        const dependency = findTaskByTextRecursive(tasks, updatesFromAi.dependentOnTaskText);
+        if (dependency) {
+            if (dependency.id === id) { // Prevent self-dependency
+                toast({ title: "AI Info", description: "AI tried to make a task depend on itself. Ignoring dependency change.", variant: "default" });
+            } else {
+                supabaseUpdates.dependent_on = dependency.id;
+            }
+        } else {
+            toast({ title: "AI Info", description: `AI specified dependency "${updatesFromAi.dependentOnTaskText}" but task not found. Ignoring dependency change.`, variant: "default" });
+        }
+    } else if (updatesFromAi.dependentOnTaskText === null || updatesFromAi.dependentOnTaskText === "") { // Explicitly remove dependency
+        supabaseUpdates.dependent_on = null;
+    }
 
 
     if (Object.keys(supabaseUpdates).length === 0) {
@@ -405,39 +531,52 @@ export function useTasks() {
     }
     
     await updateTask(id, supabaseUpdates);
-    toast({ title: "Success", description: "Task updated by AI." }); 
+    toast({ title: "Success", description: "Task updated by AI." }); // Assuming updateTask handles its own success/error toasts for the actual update.
 
-  }, [toast, updateTask]);
+  }, [toast, updateTask, tasks]); // tasks is needed for findTaskByTextRecursive
   
   const toggleComplete = useCallback(async (id: string, currentCompleted: boolean) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return;
     }
+    // Check if the task is blocked before allowing completion
+    const task = findTaskByIdRecursive(tasks, id);
+    if (task?.isBlocked && !currentCompleted) { // If trying to complete a blocked task
+        toast({
+            title: "Task Blocked",
+            description: `Cannot complete task "${task.text}". It is blocked by "${task.dependentOnTaskName}". Complete the dependency first.`,
+            variant: "destructive",
+            duration: 5000,
+        });
+        return;
+    }
+
     const newCompletedStatus = !currentCompleted;
-    // updateTask will handle recurrence and refetching
-    await updateTask(id, { completed: newCompletedStatus }); 
+    await updateTask(id, { completed: newCompletedStatus }); // updateTask will handle recurrence
     toast({ title: "Success", description: "Task completion toggled." });
-  }, [toast, updateTask]);
+  }, [toast, updateTask, tasks]); // tasks is needed for findTaskByIdRecursive
 
   const updateTaskPriority = useCallback(async (id: string, priority: Priority) => {
     await updateTask(id, { priority });
     toast({ title: "Success", description: "Task priority updated." });
   }, [toast, updateTask]);
 
+  // Generates and returns a shareable link for a task
   const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return null;
     }
-    const { data: updatedTaskAfterShare, error } = await generateShareLinkSupabase(id);
+    // Call Supabase function to generate/update share_id
+    const { data: updatedTaskAfterShare, error } = await generateShareLinkSupabase(id); // Assumes this function exists and returns updated task
     if (error || !updatedTaskAfterShare || !updatedTaskAfterShare.share_id) {
         console.error("Failed to generate share link via Supabase function", error);
         toast({title: "Error", description: `Could not generate share link: ${error?.message || 'No share ID returned.'}`, variant: "destructive"});
         return null;
     }
     toast({title: "Share Link Generated", description: `Task share ID: ${updatedTaskAfterShare.share_id}.`});
-    await fetchAndSetTasks(); 
+    await fetchAndSetTasks(); // Re-fetch to update task in UI with new shareId
     return `${window.location.origin}/share/task/${updatedTaskAfterShare.share_id}`;
   }, [toast, fetchAndSetTasks]);
 
@@ -450,49 +589,82 @@ export function useTasks() {
         return null;
       }
       let operationsPerformed = false;
-      const newlyCreatedParentsMap = new Map<string, string>();
+      const newlyCreatedParentsMap = new Map<string, string>(); // To map AI's parent text to actual new parent ID
 
+      // Add tasks first
       if (aiOutput.tasksToAdd && aiOutput.tasksToAdd.length > 0) {
+        // Separate main tasks and subtasks from AI output
         const mainTasksFromAI = aiOutput.tasksToAdd.filter(t => !t.parentTaskText);
         const subTasksFromAI = aiOutput.tasksToAdd.filter(t => !!t.parentTaskText);
+
+        // Process main tasks first to get their IDs
         for (const taskToAdd of mainTasksFromAI) {
-          const newTaskId = await addTask(taskToAdd.text, undefined);
+          const newTaskId = await addTaskInternal(
+            taskToAdd.text, 
+            undefined, 
+            taskToAdd.recurrence, 
+            undefined, // dueDate - AI might add this later via update
+            undefined, // notes
+            undefined, // tags
+            undefined, // priority
+            undefined, // assignedTo
+            undefined, // attachments
+            undefined, // status
+            undefined, // dependentOnId - AI might set this later
+            taskToAdd.dependentOnTaskText // dependentOnTaskText for AI
+          );
           if (newTaskId) {
             newlyCreatedParentsMap.set(taskToAdd.text, newTaskId);
             operationsPerformed = true;
-            if (taskToAdd.recurrence) {
-                await updateTask(newTaskId, { recurrence: taskToAdd.recurrence });
-            }
+            // Recurrence is now handled in addTaskInternal or updateTask
           }
         }
         
+        // Get current tasks state AFTER main tasks might have been added
+        // This might not be strictly necessary if addTaskInternal re-fetches, but good for clarity
         const currentTasksStateForAISubtasks = tasks; 
 
+        // Process subtasks, resolving parent IDs
         for (const taskToAdd of subTasksFromAI) {
           let parentId: string | null = null;
           if (taskToAdd.parentTaskText) {
             if (newlyCreatedParentsMap.has(taskToAdd.parentTaskText)) {
               parentId = newlyCreatedParentsMap.get(taskToAdd.parentTaskText)!;
             } else {
+              // Try to find existing parent task by text
               const parentTask = findTaskByTextRecursive(currentTasksStateForAISubtasks, taskToAdd.parentTaskText);
               if (parentTask) {
                 parentId = parentTask.id;
               } else {
+                // If parent not found (neither new nor existing), AI might be hallucinating or user made a typo.
+                // Defaulting to top-level task for now, or could be an error.
                 console.warn(`Parent task "${taskToAdd.parentTaskText}" not found for AI subtask. Adding as top-level.`);
               }
             }
           }
-          const newSubtaskId = await addTask(taskToAdd.text, parentId ?? undefined);
+          const newSubtaskId = await addTaskInternal(
+            taskToAdd.text, 
+            parentId ?? undefined, // Use resolved parentId
+            taskToAdd.recurrence,
+            undefined, // dueDate
+            undefined, // notes
+            undefined, // tags
+            undefined, // priority
+            undefined, // assignedTo
+            undefined, // attachments
+            undefined, // status
+            undefined, // dependentOnId
+            taskToAdd.dependentOnTaskText // dependentOnTaskText for AI
+            );
            if (newSubtaskId) {
             operationsPerformed = true;
-            if (taskToAdd.recurrence) {
-                 await updateTask(newSubtaskId, { recurrence: taskToAdd.recurrence });
-            }
           }
         }
       }
 
+      // Remove tasks
       if (aiOutput.tasksToRemove && aiOutput.tasksToRemove.length > 0) {
+        // Get current tasks state before deletion
         const currentTasksStateForAIDeletion = tasks; 
         for (const taskToRemove of aiOutput.tasksToRemove) {
           const task = findTaskByTextRecursive(currentTasksStateForAIDeletion, taskToRemove.text);
@@ -505,12 +677,13 @@ export function useTasks() {
         }
       }
 
+      // Update tasks
       if (aiOutput.tasksToUpdate && aiOutput.tasksToUpdate.length > 0) {
-        const currentTasksStateForAIUpdate = tasks;
+        const currentTasksStateForAIUpdate = tasks; // Get current tasks state before updates
         for (const taskToUpdate of aiOutput.tasksToUpdate) {
-          const task = findTaskByTextRecursive(currentTasksStateForAIUpdate, taskToUpdate.taskIdentifier); 
+          const task = findTaskByTextRecursive(currentTasksStateForAIUpdate, taskToUpdate.taskIdentifier); // Find by original identifier
           if (task) {
-            await editTask(task.id, taskToUpdate as AiUpdateTaskDetails); 
+            await editTask(task.id, taskToUpdate as AiUpdateTaskDetails); // editTask handles mapping to SupabaseTaskUpdate
             operationsPerformed = true;
           } else {
              toast({title: "AI Info", description: `Task "${taskToUpdate.taskIdentifier}" for update not found.`});
@@ -521,9 +694,10 @@ export function useTasks() {
       if (operationsPerformed) {
         toast({ title: "AI Actions Completed", description: "Tasks managed by AI.", duration: 3000 });
       } else if (!aiOutput.tasksToAdd?.length && !aiOutput.tasksToRemove?.length && !aiOutput.tasksToUpdate?.length) {
+        // Only show "No Action" if AI truly returned empty arrays for all operations.
         toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage.", duration: 3000 });
       }
-      await fetchAndSetTasks(); // Final refetch after all AI operations.
+      await fetchAndSetTasks(); // Final re-fetch to ensure UI is perfectly synced
       return aiOutput;
 
     } catch (error: any) {
@@ -531,20 +705,20 @@ export function useTasks() {
       toast({ title: "AI Error", description: error.message || "Failed to process AI command.", variant: "destructive" });
       return null;
     }
-  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, updateTask]); // Removed processAiInputFlow from deps as it's a static import
+  }, [toast, addTaskInternal, deleteTask, editTask, tasks, fetchAndSetTasks]); // Ensure all dependencies are listed
 
   return { 
     tasks, 
     isLoading, 
     addTask,
     deleteTask,
-    editTask, 
-    updateTask, 
+    editTask, // Expose the AI-centric editTask
+    updateTask, // Expose the general updateTask (used by UI components)
     toggleComplete,
     updateTaskPriority,
     addSubtask,
     generateShareLink,
-    processAiInput,
+    processAiInput, // Expose the AI input processor
   };
 }
     

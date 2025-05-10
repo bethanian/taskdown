@@ -22,6 +22,7 @@
 | `attachments` | `jsonb`     | `NULL`                | Yes      |                                                                       |
 | `user_id`     | `uuid`      | `NULL`                | Yes      | Foreign key to `auth.users.id` (if applicable for user association).    |
 | `recurrence`  | `text`      | `"none"::text`        | No       | Recurrence rule: 'none', 'daily', 'weekly', 'monthly', 'yearly'.      |
+| `dependent_on`| `uuid`      | `NULL`                | Yes      | Foreign key to `tasks.id` (for task dependencies). Set to NULL on delete of referenced task. |
 
 ---
 

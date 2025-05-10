@@ -1,7 +1,7 @@
 // src/components/taskdown/EditTaskDialog.tsx
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -17,13 +17,15 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule } from '@/lib/types';
 import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS, DEFAULT_RECURRENCE_RULE, RECURRENCE_OPTIONS, RECURRENCE_LABELS } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User, CalendarDays, RefreshCw } from 'lucide-react';
+import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User, CalendarDays, RefreshCw, Link2Off, Link2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectGroup,
+  SelectLabel
 } from "@/components/ui/select";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { DatePicker } from '@/components/ui/date-picker'; 
@@ -32,6 +34,7 @@ interface EditTaskDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   task: Task | null;
+  allTasks: Task[]; // Pass all tasks for dependency dropdown
   onSave: (
     id: string, 
     newText: string, 
@@ -42,7 +45,8 @@ interface EditTaskDialogProps {
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
     newDueDate: number | undefined,
-    newRecurrence: RecurrenceRule // Added recurrence
+    newRecurrence: RecurrenceRule,
+    newDependentOnId: string | null // Added dependency ID
   ) => void;
 }
 
@@ -62,7 +66,34 @@ function getUrlHostname(url: string): string {
   }
 }
 
-export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskDialogProps) {
+// Helper to get all IDs of a task and its subtasks (recursive)
+const getAllTaskIdsAndSubtaskIds = (task: Task): string[] => {
+  let ids = [task.id];
+  if (task.subtasks && task.subtasks.length > 0) {
+    task.subtasks.forEach(subtask => {
+      ids = ids.concat(getAllTaskIdsAndSubtaskIds(subtask));
+    });
+  }
+  return ids;
+};
+
+// Helper to flatten the task tree for easier searching
+const flattenTasks = (tasks: Task[]): Task[] => {
+  const flat: Task[] = [];
+  const recurse = (taskList: Task[]) => {
+    for (const task of taskList) {
+      flat.push(task);
+      if (task.subtasks) {
+        recurse(task.subtasks);
+      }
+    }
+  };
+  recurse(tasks);
+  return flat;
+};
+
+
+export function EditTaskDialog({ isOpen, onOpenChange, task, allTasks, onSave }: EditTaskDialogProps) {
   const [text, setText] = useState('');
   const [tags, setTags] = useState<string[]>([]);
   const [currentTagInput, setCurrentTagInput] = useState('');
@@ -74,7 +105,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS);
   const [assignedTo, setAssignedTo] = useState<string | undefined>(undefined);
   const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
-  const [recurrence, setRecurrence] = useState<RecurrenceRule>(DEFAULT_RECURRENCE_RULE); // Added recurrence state
+  const [recurrence, setRecurrence] = useState<RecurrenceRule>(DEFAULT_RECURRENCE_RULE);
+  const [dependentOnId, setDependentOnId] = useState<string | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -86,12 +118,25 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setStatus(task.status || DEFAULT_TASK_STATUS);
       setAssignedTo(task.assignedTo || undefined);
       setDueDate(task.dueDate ? new Date(task.dueDate) : undefined);
-      setRecurrence(task.recurrence || DEFAULT_RECURRENCE_RULE); // Set recurrence from task
+      setRecurrence(task.recurrence || DEFAULT_RECURRENCE_RULE);
+      setDependentOnId(task.dependentOnId || null);
       setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
     }
   }, [task]);
+
+  const availableDependencies = useMemo(() => {
+    if (!task) return [];
+    // Get IDs of the current task and all its subtasks to prevent cyclic dependencies
+    const currentTaskAndItsSubtaskIds = getAllTaskIdsAndSubtaskIds(task);
+    const flatAllTasks = flattenTasks(allTasks); // Flatten all tasks for the dropdown
+    
+    return flatAllTasks.filter(
+      (t) => !currentTaskAndItsSubtaskIds.includes(t.id) // Cannot depend on self or its subtasks
+      // More complex cycle detection (A -> B -> C -> A) could be added here if needed
+    );
+  }, [task, allTasks]);
 
   const handleSave = () => {
     if (task) {
@@ -105,7 +150,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
         status, 
         assignedTo,
         dueDate ? dueDate.getTime() : undefined,
-        recurrence // Pass recurrence
+        recurrence,
+        dependentOnId // Pass the selected dependency ID
       );
       onOpenChange(false);
     }
@@ -132,20 +178,21 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
 
     let name = currentAttachmentNameInput.trim();
     if (!name) {
-      name = getUrlHostname(url); 
+      name = getUrlHostname(url); // Fallback to hostname if name is not provided
     }
     
+    // Basic URL validation (starts with http/https)
     try {
-      new URL(url);
+      new URL(url); // This will throw an error if the URL is malformed
     } catch (_) {
       alert("Invalid URL. Please enter a valid URL starting with http:// or https://");
       return;
     }
 
     const newAttachment: Attachment = {
-      id: crypto.randomUUID(),
+      id: crypto.randomUUID(), // Generate a unique ID for the attachment
       name,
-      type: 'url',
+      type: 'url', // Assuming only URL attachments for now
       value: url,
       createdAt: Date.now(),
     };
@@ -165,6 +212,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       <DialogContent 
         className="sm:max-w-md md:max-w-lg lg:max-w-xl"
         onPointerDownOutside={(event) => {
+          // Prevent dialog from closing when interacting with popovers (like DatePicker)
           const target = event.target as HTMLElement;
           if (target.closest('[data-radix-popover-content]') || target.closest('.rdp')) {
             event.preventDefault();
@@ -199,7 +247,7 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
             <Label htmlFor="edit-task-status" className="text-right col-span-1">
               Status
             </Label>
-            <Select value={status} onValueChange={(value) => setStatus(value as TaskStatus)}>
+            <Select value={status} onValueChange={(value) => setStatus(value as TaskStatus)} disabled={task.isBlocked}>
               <SelectTrigger className="col-span-3">
                 <SelectValue placeholder="Set status" />
               </SelectTrigger>
@@ -273,6 +321,41 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
               </SelectContent>
             </Select>
           </div>
+
+          {/* Dependency */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-task-dependency" className="text-right col-span-1">
+              Depends On
+            </Label>
+            <Select
+              value={dependentOnId || ''}
+              onValueChange={(value) => setDependentOnId(value === '' ? null : value)}
+            >
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select a task it depends on..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectLabel>Tasks</SelectLabel>
+                  <SelectItem value="">
+                    <div className="flex items-center">
+                      <Link2Off className="h-4 w-4 mr-2 text-muted-foreground" />
+                      None
+                    </div>
+                  </SelectItem>
+                  {availableDependencies.map(depTask => (
+                    <SelectItem key={depTask.id} value={depTask.id}>
+                      <div className="flex items-center">
+                         <Link2 className="h-4 w-4 mr-2 text-muted-foreground" />
+                         {depTask.text.length > 50 ? `${depTask.text.substring(0, 47)}...` : depTask.text}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </div>
+
 
           {/* Assigned To */}
           <div className="grid grid-cols-4 items-center gap-4">

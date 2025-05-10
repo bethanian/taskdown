@@ -23,6 +23,12 @@ const ProcessedTaskSchema = z.object({
       'The text of the parent task if this is a subtask. Omit if it is a top-level task.'
     ),
   recurrence: RecurrenceEnum.optional().describe("The recurrence rule for the task (e.g., 'daily', 'weekly'). Defaults to 'none' if not specified."),
+  dependentOnTaskText: z
+    .string()
+    .optional()
+    .describe(
+      'The text of the task that this new task depends on. Omit if there is no dependency.'
+    ),
 });
 export type ProcessedTask = z.infer<typeof ProcessedTaskSchema>;
 
@@ -39,6 +45,13 @@ const UpdateTaskDetailsSchema = z.object({
   tags: z.array(z.string()).optional().describe('The complete new list of tags for the task. If provided, this will replace all existing tags on the task.'),
   notes: z.string().optional().describe('The new notes for the task. If provided, this will replace all existing notes on the task.'),
   recurrence: RecurrenceEnum.optional().describe("The new recurrence rule for the task. To remove recurrence, set to 'none' if explicitly stated."),
+  dependentOnTaskText: z
+    .string()
+    .optional()
+    .nullable() // Allow null to explicitly remove dependency
+    .describe(
+      'The text of the task that this task should now depend on. Provide an empty string or null to remove an existing dependency if explicitly stated by the user (e.g., "remove dependency").'
+    ),
 });
 export type UpdateTaskDetails = z.infer<typeof UpdateTaskDetailsSchema>;
 
@@ -53,13 +66,13 @@ export type ProcessTaskInput = z.infer<typeof ProcessTaskInputSchema>;
 const ProcessTaskOutputSchema = z.object({
   tasksToAdd: z
     .array(ProcessedTaskSchema)
-    .describe('A list of tasks to be added, potentially with parent references and recurrence rules.'),
+    .describe('A list of tasks to be added, potentially with parent references, recurrence rules, and dependencies.'),
   tasksToRemove: z
     .array(z.object({text: z.string().describe('The text of the task to remove.')}))
     .describe('A list of tasks to be removed, identified by their text.'),
   tasksToUpdate: z
     .array(UpdateTaskDetailsSchema)
-    .describe('A list of tasks to be updated, identified by their current text, with new details including recurrence.'),
+    .describe('A list of tasks to be updated, identified by their current text, with new details including recurrence and dependencies.'),
 });
 export type ProcessTaskOutput = z.infer<typeof ProcessTaskOutputSchema>;
 
@@ -81,6 +94,7 @@ If they also ask for steps, suggestions, or an outline for such a project/goal, 
 The user might specify tasks and subtasks. Subtasks are often indicated by phrases like "under [Parent Task Name]", "with subtasks:", "subtasks for [Parent Task Name]:", or using indentation-like phrasing.
 Multiple tasks can be separated by semicolons, "and", or new lines.
 Recognize recurrence patterns like "every day", "weekly", "monthly", "annually" or "yearly". Map these to 'daily', 'weekly', 'monthly', or 'yearly'. If no recurrence is specified, default to 'none'.
+Recognize dependency phrases like "depends on [Task Name]", "after [Task Name]", "blocked by [Task Name]".
 
 Input: "{{naturalLanguageInput}}"
 
@@ -89,6 +103,7 @@ Desired output format is a JSON object with three main keys: "tasksToAdd", "task
   - "text": Task description.
   - "parentTaskText" (optional): Parent task text if it's a subtask.
   - "recurrence" (optional): Recurrence rule ('none', 'daily', 'weekly', 'monthly', 'yearly'). Defaults to 'none'.
+  - "dependentOnTaskText" (optional): Text of the task this new task depends on.
 - "tasksToRemove": Array of objects for tasks to delete. Each object:
   - "text": Exact text of the task to remove.
 - "tasksToUpdate": Array of objects for tasks to modify. Each object:
@@ -100,13 +115,14 @@ Desired output format is a JSON object with three main keys: "tasksToAdd", "task
   - "tags" (optional): A COMPLETE new list of tags. This will REPLACE existing tags.
   - "notes" (optional): New notes. This will REPLACE existing notes.
   - "recurrence" (optional): New recurrence rule. Set to 'none' to remove recurrence.
+  - "dependentOnTaskText" (optional, nullable): Text of the task this task should depend on. Send null or "" if user wants to remove dependency (e.g., "remove dependency from X").
 
 Examples:
-1. Input: "Create tasks: Plan vacation; Book flights under Plan vacation; Pack bags. Remove old task: Finish report."
+1. Input: "Create tasks: Plan vacation; Book flights under Plan vacation depends on Plan vacation; Pack bags. Remove old task: Finish report."
    Output: {
      "tasksToAdd": [
        { "text": "Plan vacation" },
-       { "text": "Book flights", "parentTaskText": "Plan vacation" },
+       { "text": "Book flights", "parentTaskText": "Plan vacation", "dependentOnTaskText": "Plan vacation" },
        { "text": "Pack bags" }
      ],
      "tasksToRemove": [
@@ -115,7 +131,7 @@ Examples:
      "tasksToUpdate": []
    }
 
-2. Input: "Update 'Launch Prep': set status to In Progress, priority high, assign to Dave, tags: [marketing, Q3]. Add note: 'Coordinate with PR team.'"
+2. Input: "Update 'Launch Prep': set status to In Progress, priority high, assign to Dave, tags: [marketing, Q3]. Add note: 'Coordinate with PR team.' Make it depend on 'Finalize budget'."
    Output: {
      "tasksToAdd": [],
      "tasksToRemove": [],
@@ -126,28 +142,30 @@ Examples:
          "priority": "high",
          "assignedTo": "Dave",
          "tags": ["marketing", "Q3"],
-         "notes": "Coordinate with PR team."
+         "notes": "Coordinate with PR team.",
+         "dependentOnTaskText": "Finalize budget"
        }
      ]
    }
    
-3. Input: "Add task: Pay rent every month. Change 'Water plants' to repeat weekly."
+3. Input: "Add task: Pay rent every month. Change 'Water plants' to repeat weekly. Task 'Review designs' is blocked by 'Gather feedback'."
    Output: {
      "tasksToAdd": [
        { "text": "Pay rent", "recurrence": "monthly" }
      ],
      "tasksToRemove": [],
      "tasksToUpdate": [
-       { "taskIdentifier": "Water plants", "recurrence": "weekly" }
+       { "taskIdentifier": "Water plants", "recurrence": "weekly" },
+       { "taskIdentifier": "Review designs", "dependentOnTaskText": "Gather feedback" }
      ]
    }
 
-4. Input: "Round System, Gun System; with subtasks under Gun System: Ammo, Reload. Set 'Round System' priority to medium."
+4. Input: "Round System, Gun System; with subtasks under Gun System: Ammo, Reload. Set 'Round System' priority to medium. 'Ammo' depends on 'Gun System'."
     Output: {
         "tasksToAdd": [
             { "text": "Round System" },
             { "text": "Gun System" },
-            { "text": "Ammo", "parentTaskText": "Gun System" },
+            { "text": "Ammo", "parentTaskText": "Gun System", "dependentOnTaskText": "Gun System" },
             { "text": "Reload", "parentTaskText": "Gun System" }
         ],
         "tasksToRemove": [],
@@ -159,14 +177,14 @@ Examples:
         ]
     }
 
-5. Input: "Remind me to take out trash daily. Mark 'Submit expenses' as not recurring."
+5. Input: "Remind me to take out trash daily. Mark 'Submit expenses' as not recurring and remove its dependency."
    Output: {
      "tasksToAdd": [
        { "text": "Take out trash", "recurrence": "daily" }
      ],
      "tasksToRemove": [],
      "tasksToUpdate": [
-       { "taskIdentifier": "Submit expenses", "recurrence": "none" }
+       { "taskIdentifier": "Submit expenses", "recurrence": "none", "dependentOnTaskText": null }
      ]
    }
 

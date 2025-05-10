@@ -74,7 +74,8 @@ export function ChecklistView({
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
     newDueDateMs: number | undefined,
-    newRecurrence: RecurrenceRule // Added recurrence
+    newRecurrence: RecurrenceRule,
+    newDependentOnId: string | null 
   ) => {
     const updates: TaskUpdate = {
       title: newText,
@@ -85,7 +86,8 @@ export function ChecklistView({
       status: newStatus,
       assigned_to: newAssignedTo === "" ? null : newAssignedTo,
       due_date: newDueDateMs ? new Date(newDueDateMs).toISOString() : null,
-      recurrence: newRecurrence, // Added recurrence
+      recurrence: newRecurrence,
+      dependent_on: newDependentOnId,
     };
     updateTask(id, updates);
     setIsEditDialogOpen(false);
@@ -96,21 +98,15 @@ export function ChecklistView({
     const {active, over} = event;
     
     if (over && active.id !== over.id) {
-      // For local optimistic update, you might want to update the tasks order here
-      // This example does not persist the order to the backend.
-      // A more robust solution would involve updating an 'order' field in your database.
       const oldIndex = tasks.findIndex((task) => task.id === active.id);
       const newIndex = tasks.findIndex((task) => task.id === over.id);
       
       if (oldIndex !== -1 && newIndex !== -1) {
-        // This is a visual-only reorder for now as persistence is not implemented.
-        // For actual persistence, call an update function here.
-        // setTasks(arrayMove(tasks, oldIndex, newIndex));
+        // This is where you would call a function to persist the new order.
+        // For now, we'll just log it as persistence is handled by useTasks or backend.
         console.warn("Task reorder attempted. Persistence for drag-and-drop is not yet fully implemented in useTasks.");
-        // To actually persist, you'd need a function like:
-        // updateTaskOrder(active.id as string, newIndex); 
-        // or similar, which would update the 'order' or 'position' field in Supabase
-        // and then re-fetch or re-sort tasks.
+        // Example of how you might update local state if not relying on immediate backend re-fetch:
+        // setTasks((currentTasks) => arrayMove(currentTasks, oldIndex, newIndex));
       }
     }
   }
@@ -150,6 +146,7 @@ export function ChecklistView({
     );
   }
   
+  // Filter out subtasks from the main list for SortableContext if they are rendered recursively
   const topLevelTaskIds = tasks.filter(task => !task.subtasks?.some(st => tasks.find(t => t.id === st.id))).map(task => task.id);
 
   return (
@@ -159,11 +156,11 @@ export function ChecklistView({
       onDragEnd={handleDragEnd}
     >
       <SortableContext
-        items={topLevelTaskIds} 
+        items={topLevelTaskIds} // Only top-level tasks are directly sortable here
         strategy={verticalListSortingStrategy}
       >
         <div>
-          {tasks.map(task => ( 
+          {tasks.map(task => ( // Render all tasks, ChecklistItem handles its own depth/subtasks
             <ChecklistItem
               key={task.id}
               task={task}
@@ -173,7 +170,7 @@ export function ChecklistView({
               onUpdatePriority={onUpdatePriority}
               onAddSubtask={onAddSubtask}
               onGenerateShareLink={onGenerateShareLink}
-              depth={0} 
+              depth={0} // Top-level tasks have depth 0
               searchTerm={searchTerm}
             />
           ))}
@@ -184,6 +181,7 @@ export function ChecklistView({
           isOpen={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
           task={editingTask}
+          allTasks={tasks} // Pass all tasks for dependency dropdown
           onSave={handleSaveEdit}
         />
       )}

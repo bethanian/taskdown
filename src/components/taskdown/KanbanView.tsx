@@ -24,7 +24,8 @@ interface KanbanViewProps {
     status: TaskStatus, 
     assignedTo: string | undefined, 
     dueDate: number | undefined,
-    recurrence: RecurrenceRule // Added recurrence
+    recurrence: RecurrenceRule,
+    dependentOnId: string | null // Added dependentOnId
   ) => void;
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
   onToggleComplete: ReturnType<typeof useTasks>['toggleComplete']; 
@@ -65,9 +66,10 @@ export function KanbanView({
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
     newDueDate: number | undefined,
-    newRecurrence: RecurrenceRule // Added recurrence
+    newRecurrence: RecurrenceRule,
+    newDependentOnId: string | null // Added dependentOnId
   ) => {
-    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate, newRecurrence); // Pass newRecurrence
+    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate, newRecurrence, newDependentOnId);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -107,8 +109,9 @@ export function KanbanView({
     );
   }
 
+  // Group tasks by status for Kanban columns
   const tasksByStatus = tasks.reduce((acc, task) => {
-    const status = task.status || TASK_STATUS_OPTIONS[0]; 
+    const status = task.status || TASK_STATUS_OPTIONS[0]; // Default to the first status if undefined
     if (!acc[status]) {
       acc[status] = [];
     }
@@ -117,6 +120,7 @@ export function KanbanView({
   }, {} as Record<TaskStatus, Task[]>);
 
   return (
+    // <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
       {TASK_STATUS_OPTIONS.map(status => (
         <KanbanColumn
@@ -138,9 +142,11 @@ export function KanbanView({
           isOpen={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
           task={editingTask}
+          allTasks={tasks} // Pass all tasks for dependency dropdown
           onSave={handleSaveEdit}
         />
       )}
     </div>
+    // </DndContext>
   );
 }

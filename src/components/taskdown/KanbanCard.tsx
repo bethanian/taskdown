@@ -2,19 +2,18 @@
 "use client";
 
 import React from 'react';
-import type { Task, Priority } from '@/lib/types';
+import type { Task, Priority, Attachment } from '@/lib/types';
 import type { useTasks } from '@/hooks/useTasks'; // Import useTasks for ReturnType
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Edit3, Trash2, TagIcon, FlagIcon, User, Share2, CalendarDays, FileText, Paperclip, LinkIcon, CheckCircle, Circle } from 'lucide-react'; // Removed FlagOff, Plus
+import { Edit3, Trash2, TagIcon, FlagIcon, User, Share2, CalendarDays, FileText, Paperclip, LinkIcon, CheckCircle, Circle, AlertTriangle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Progress } from '@/components/ui/progress';
 import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
 import { cn } from '@/lib/utils';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
-// import { useSortable } from '@dnd-kit/sortable'; // For future DND
-// import { CSS } from '@dnd-kit/utilities'; // For future DND
+
 
 interface KanbanCardProps {
   task: Task;
@@ -75,8 +74,6 @@ export function KanbanCard({
   onGenerateShareLink,
   searchTerm 
 }: KanbanCardProps) {
-  // const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: task.id }); // For DND
-  // const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.8 : 1, }; // For DND
 
   const currentPriorityConfig = priorityConfig[task.priority || 'none'];
   const dueDateInfo = getDueDateInfo(task.dueDate, task.completed);
@@ -92,27 +89,32 @@ export function KanbanCard({
 
   const hasNotes = task.notes && task.notes.trim() !== '';
   const hasAttachments = task.attachments && task.attachments.length > 0;
+  const isDisabled = task.isBlocked;
 
 
   return (
     <TooltipProvider delayDuration={300}>
       <Card 
-        // ref={setNodeRef} style={style} {...attributes} {...listeners} // For DND
-        className="bg-card shadow-lg hover:shadow-xl transition-shadow duration-200"
+        className={cn(
+            "bg-card shadow-lg hover:shadow-xl transition-shadow duration-200",
+            isDisabled && "opacity-70 bg-muted/30 cursor-not-allowed"
+        )}
       >
         <CardHeader className="p-3 pb-2">
           <div className="flex justify-between items-start gap-2">
             <div 
               className={cn(
-                "flex items-center gap-2 cursor-pointer flex-grow min-w-0", 
-                task.completed && "text-muted-foreground line-through"
+                "flex items-center gap-2 flex-grow min-w-0", 
+                task.completed && "text-muted-foreground line-through",
+                isDisabled ? "cursor-not-allowed" : "cursor-pointer"
               )}
-              onClick={() => onToggleComplete(task.id, task.completed)}
+              onClick={() => !isDisabled && onToggleComplete(task.id, task.completed)}
               role="button"
-              tabIndex={0}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggleComplete(task.id, task.completed)}
+              tabIndex={isDisabled ? -1 : 0}
+              onKeyDown={(e) => !isDisabled && (e.key === 'Enter' || e.key === ' ') && onToggleComplete(task.id, task.completed)}
               aria-pressed={task.completed}
               aria-label={task.completed ? `Mark task as incomplete: ${task.text}` : `Mark task as complete: ${task.text}`}
+              aria-disabled={isDisabled}
             >
               {task.completed ? <CheckCircle className="h-5 w-5 text-green-500 shrink-0" /> : <Circle className="h-5 w-5 text-muted-foreground shrink-0" />}
               <CardTitle className="text-sm font-semibold leading-tight flex-grow min-w-0">
@@ -122,7 +124,7 @@ export function KanbanCard({
             <div className="flex gap-0.5 shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => onEditTask(task)} className="h-7 w-7">
+                    <Button variant="ghost" size="icon" onClick={() => onEditTask(task)} className="h-7 w-7" disabled={isDisabled && !task.isBlocked /* Allow edit if blocked to remove dependency */}>
                       <Edit3 className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
@@ -146,6 +148,16 @@ export function KanbanCard({
                 </Tooltip>
             </div>
           </div>
+           {task.isBlocked && task.dependentOnTaskName && (
+              <Tooltip>
+                  <TooltipTrigger asChild>
+                      <Badge variant="destructive" className="text-xs py-0.5 px-1.5 items-center mt-1 w-full justify-start">
+                          <AlertTriangle className="h-3 w-3 mr-1" /> Blocked by: {task.dependentOnTaskName.length > 25 ? `${task.dependentOnTaskName.substring(0,22)}...` : task.dependentOnTaskName }
+                      </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent><p>Blocked by: "{task.dependentOnTaskName}"</p></TooltipContent>
+              </Tooltip>
+          )}
         </CardHeader>
         <CardContent className="p-3 pt-0 space-y-2">
           

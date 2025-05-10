@@ -8,7 +8,7 @@ import { RECURRENCE_LABELS } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks, RefreshCw } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks, RefreshCw, AlertTriangle } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -112,7 +112,7 @@ export function ChecklistItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id, disabled: depth > 0 }); 
+  } = useSortable({ id: task.id, disabled: depth > 0 || task.isBlocked }); 
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -165,6 +165,7 @@ export function ChecklistItem({
   };
   
   const hasDetails = (task.notes && task.notes.trim() !== '') || (task.attachments && task.attachments.length > 0);
+  const isDisabled = task.isBlocked;
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -174,7 +175,8 @@ export function ChecklistItem({
         className={cn(
           "mb-1 group transition-all duration-200 shadow-sm hover:shadow-md",
           isDragging && "opacity-80 shadow-lg z-50",
-          depth > 0 && "bg-card/95" 
+          depth > 0 && "bg-card/95",
+          isDisabled && "opacity-70 bg-muted/30"
         )}
       >
         <CardContent className="p-1.5 flex flex-col gap-1">
@@ -185,10 +187,11 @@ export function ChecklistItem({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="cursor-grab h-7 w-7 opacity-30 group-hover:opacity-100 transition-opacity shrink-0"
+                    className={cn("cursor-grab h-7 w-7 opacity-30 group-hover:opacity-100 transition-opacity shrink-0", isDisabled && "cursor-not-allowed opacity-20")}
                     aria-label="Drag to reorder"
-                    {...attributes}
-                    {...listeners}
+                    disabled={isDisabled}
+                    {...(isDisabled ? {} : attributes)} // Only spread attributes if not disabled
+                    {...(isDisabled ? {} : listeners)}  // Only spread listeners if not disabled
                   >
                     <GripVertical className="h-4 w-4" />
                   </Button>
@@ -202,7 +205,7 @@ export function ChecklistItem({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" disabled={isDisabled}>
                       {task.priority === 'none' || !task.priority ? (
                         <FlagOff className={`h-3.5 w-3.5 ${currentPriorityConfig.iconClassName}`} />
                       ) : (
@@ -224,6 +227,7 @@ export function ChecklistItem({
                     key={p}
                     onClick={() => onUpdatePriority(task.id, p)}
                     className={cn("cursor-pointer", priorityConfig[p].itemClassName)}
+                    disabled={isDisabled}
                   >
                     {p === 'none' ? (
                       <FlagOff className={`h-4 w-4 mr-2 ${priorityConfig[p].iconClassName}`} />
@@ -243,6 +247,7 @@ export function ChecklistItem({
               onCheckedChange={() => onToggleComplete(task.id, task.completed)}
               aria-label={`Mark task ${task.completed ? 'incomplete' : 'complete'}`}
               className="h-4 w-4 rounded-sm border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
+              disabled={isDisabled}
             />
 
             {subtaskProgress !== null && (
@@ -260,9 +265,19 @@ export function ChecklistItem({
 
             <div className="flex-grow min-w-0 flex items-center justify-between">
               <div className="flex-grow min-w-0 flex items-center gap-1">
-                <div id={`task-text-${task.id}`} className="cursor-pointer flex-grow min-w-0" onClick={() => onToggleComplete(task.id, task.completed)}>
+                <div id={`task-text-${task.id}`} className={cn("cursor-pointer flex-grow min-w-0", isDisabled && "cursor-not-allowed")} onClick={() => !isDisabled && onToggleComplete(task.id, task.completed)}>
                     <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
                 </div>
+                {task.isBlocked && task.dependentOnTaskName && (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Badge variant="destructive" className="text-xs py-0.5 px-1.5 items-center ml-1.5">
+                                <AlertTriangle className="h-2.5 w-2.5 mr-0.5" /> Blocked
+                            </Badge>
+                        </TooltipTrigger>
+                        <TooltipContent><p>Blocked by: "{task.dependentOnTaskName}"</p></TooltipContent>
+                    </Tooltip>
+                )}
                 <div className="flex flex-wrap shrink-0 gap-0.5 items-center ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
                   {isClient && dueDateInfo && (
                     <Tooltip>
@@ -318,7 +333,7 @@ export function ChecklistItem({
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => setShowAddSubtaskInput(prev => !prev)} className="h-7 w-7">
+                    <Button variant="ghost" size="icon" onClick={() => setShowAddSubtaskInput(prev => !prev)} className="h-7 w-7" disabled={isDisabled}>
                       <Plus className="h-3.5 w-3.5" />
                       <span className="sr-only">Add subtask</span>
                     </Button>
@@ -359,12 +374,13 @@ export function ChecklistItem({
                     className="h-7 flex-grow text-xs"
                     aria-label="New subtask input"
                     onKeyDown={(e) => e.key === 'Enter' && handleAddSubtaskSubmit()}
+                    disabled={isDisabled}
                   />
-                  <Button size="sm" onClick={handleAddSubtaskSubmit} className="h-7 text-xs px-2">Save</Button>
+                  <Button size="sm" onClick={handleAddSubtaskSubmit} className="h-7 text-xs px-2" disabled={isDisabled}>Save</Button>
                   <Button variant="ghost" size="sm" onClick={() => {
                     setNewSubtaskText('');
                     setShowAddSubtaskInput(false);
-                  }} className="h-7 text-xs px-2">Cancel</Button>
+                  }} className="h-7 text-xs px-2" disabled={isDisabled}>Cancel</Button>
                 </div>
               )}
 

@@ -176,7 +176,8 @@ export default function TaskdownPage() {
     status: TaskStatus, 
     assignedTo: string | undefined, 
     dueDateMs: number | undefined,
-    recurrence: RecurrenceRule // Added recurrence
+    recurrence: RecurrenceRule,
+    dependentOnId: string | null // Added dependentOnId
   ) => {
     const updates: TaskUpdate = {
       title: text,
@@ -187,7 +188,8 @@ export default function TaskdownPage() {
       status,
       assigned_to: assignedTo,
       due_date: dueDateMs ? new Date(dueDateMs).toISOString() : null,
-      recurrence: recurrence, // Added recurrence
+      recurrence: recurrence,
+      dependent_on: dependentOnId, // Added dependentOnId
     };
     updateTask(id, updates);
   };
@@ -224,7 +226,7 @@ export default function TaskdownPage() {
             <Sparkles className="h-5 w-5 mr-2 text-primary" /> AI Task Assistant
           </h2>
           <p className="text-sm text-muted-foreground mb-3">
-            Try: "Create Design phase with subtasks: Sketches, Wireframes. Add task: Call John. Remove: Old team meeting."
+            Try: "Create Design phase with subtasks: Sketches, Wireframes. Add task: Call John. Remove: Old team meeting. Make 'Sketches' depend on 'Finalize brief'."
           </p>
           <AiTaskInputForm onProcessTasks={processAiInput} disabled={isLoading} /> 
         </div>
