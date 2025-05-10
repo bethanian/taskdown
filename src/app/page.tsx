@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -7,9 +8,10 @@ import { ChecklistView } from '@/components/taskdown/ChecklistView';
 import { KanbanView } from '@/components/taskdown/KanbanView'; 
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
-import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule, TaskFilters, TaskSort } from '@/lib/types';
 import type { TaskUpdate } from '@/lib/tasks';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
+import { FilterSortControls } from '@/components/taskdown/FilterSortControls';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
 import { AiTaskInputForm } from '@/components/taskdown/AiTaskInputForm';
@@ -29,10 +31,14 @@ export default function TaskdownPage() {
     updateTask,
     updateTaskPriority,
     generateShareLink,
-    processAiInput
+    processAiInput,
+    filters: currentHookFilters, // Renamed to avoid conflict with local state if any
+    setFilters: setCurrentHookFilters,
+    sort: currentHookSort, // Renamed
+    setSort: setCurrentHookSort,
   } = useTasks();
 
-  const [activeFilters, setActiveFilters] = useState<string[]>([]);
+  const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const [rawSearchTerm, setRawSearchTerm] = useState(''); 
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [activeView, setActiveView] = useState<'list' | 'kanban'>('list');
@@ -49,40 +55,46 @@ export default function TaskdownPage() {
     };
   }, [rawSearchTerm]);
   
-  const filteredTasks = React.useMemo(() => {
+  // Client-side filtering (tags and search term) happens *after* Supabase filtering/sorting
+  const clientFilteredTasks = React.useMemo(() => {
     const currentSearchTerm = debouncedSearchTerm.trim().toLowerCase();
-    const currentActiveFilters = activeFilters.map(f => f.toLowerCase());
+    const currentActiveTagFilters = activeTagFilters.map(f => f.toLowerCase());
 
-    if (currentActiveFilters.length === 0 && currentSearchTerm === '') {
-      return tasks;
+    // If no client-side filters are active, return tasks as fetched from Supabase
+    if (currentActiveTagFilters.length === 0 && currentSearchTerm === '') {
+      return tasks; 
     }
 
     const filterWithHierarchy = (
       taskList: Task[],
-      activeTagFilters: string[],
-      searchTerm: string
+      activeClientTagFilters: string[],
+      clientSearchTerm: string
     ): Task[] => {
       return taskList
         .map(task => {
           const filteredSubtasks = task.subtasks && task.subtasks.length > 0
-            ? filterWithHierarchy(task.subtasks, activeTagFilters, searchTerm)
+            ? filterWithHierarchy(task.subtasks, activeClientTagFilters, clientSearchTerm)
             : [];
 
-          const taskTextMatchesSearch = searchTerm === '' || task.text.toLowerCase().includes(searchTerm);
-          const taskNotesMatchesSearch = searchTerm === '' || (task.notes && task.notes.toLowerCase().includes(searchTerm));
-          const taskTagsMatchSearch = searchTerm === '' || task.tags.some(tag => tag.toLowerCase().includes(searchTerm));
-          const taskAssignedToMatchesSearch = searchTerm === '' || (task.assignedTo && task.assignedTo.toLowerCase().includes(searchTerm));
+          const taskTextMatchesSearch = clientSearchTerm === '' || task.text.toLowerCase().includes(clientSearchTerm);
+          const taskNotesMatchesSearch = clientSearchTerm === '' || (task.notes && task.notes.toLowerCase().includes(clientSearchTerm));
+          const taskTagsMatchSearch = clientSearchTerm === '' || task.tags.some(tag => tag.toLowerCase().includes(clientSearchTerm));
+          const taskAssignedToMatchesSearch = clientSearchTerm === '' || (task.assignedTo && task.assignedTo.toLowerCase().includes(clientSearchTerm));
           const taskItselfMatchesSearch = taskTextMatchesSearch || taskNotesMatchesSearch || taskTagsMatchSearch || taskAssignedToMatchesSearch;
           
-          const taskItselfMatchesTags = activeTagFilters.length === 0 || 
-            task.tags.some(tag => activeTagFilters.includes(tag.toLowerCase()));
+          const taskItselfMatchesTags = activeClientTagFilters.length === 0 || 
+            task.tags.some(tag => activeClientTagFilters.includes(tag.toLowerCase()));
 
           const taskItselfIsKept = taskItselfMatchesTags && taskItselfMatchesSearch;
 
           if (taskItselfIsKept || filteredSubtasks.length > 0) {
             return {
               ...task,
-              subtasks: taskItselfIsKept ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], searchTerm) : []) : filteredSubtasks, 
+              // If task itself matches, keep all its subtasks that also match the *search term only* (tags are for parent matching)
+              // If task itself does NOT match, but subtasks do, then only keep those matching subtasks.
+              subtasks: taskItselfIsKept 
+                ? (task.subtasks && task.subtasks.length > 0 ? filterWithHierarchy(task.subtasks, [], clientSearchTerm) : []) 
+                : filteredSubtasks, 
             };
           }
           return null;
@@ -90,9 +102,9 @@ export default function TaskdownPage() {
         .filter(task => task !== null) as Task[];
     };
     
-    return filterWithHierarchy(tasks, currentActiveFilters, currentSearchTerm);
+    return filterWithHierarchy(tasks, currentActiveTagFilters, currentSearchTerm);
 
-  }, [tasks, activeFilters, debouncedSearchTerm]);
+  }, [tasks, activeTagFilters, debouncedSearchTerm]);
 
   useEffect(() => {
     if (isLoading || tasks.length === 0) return;
@@ -123,7 +135,7 @@ export default function TaskdownPage() {
               });
               newRemindedIds.add(task.id);
               newRemindersShown = true;
-            } else if (diffDays === 1) { // Due tomorrow
+            } else if (diffDays === 1) { 
                toast({
                 title: "Reminder: Task Due Tomorrow",
                 description: `"${task.text}" is due tomorrow, ${format(dueDateObj, "PPP")}.`,
@@ -131,7 +143,7 @@ export default function TaskdownPage() {
               newRemindedIds.add(task.id);
               newRemindersShown = true;
             }
-             else if (diffDays > 1 && diffDays <= 7) { // Due in 2-7 days
+             else if (diffDays > 1 && diffDays <= 7) { 
               toast({
                 title: "Reminder: Task Due Soon",
                 description: `"${task.text}" is due in ${diffDays} days, on ${format(dueDateObj, "PPP")}.`,
@@ -152,20 +164,18 @@ export default function TaskdownPage() {
       }
     };
 
-    const timerId = setTimeout(checkReminders, 2000); // Check shortly after tasks load/change
+    const timerId = setTimeout(checkReminders, 2000); 
 
     return () => {
       clearTimeout(timerId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, isLoading, toast]); // remindedTaskIds is intentionally omitted to allow re-triggering on task changes. Set inside.
+  }, [tasks, isLoading, toast]); 
 
-  // --- Wrapper functions for editTask --- 
   const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
     updateTask(taskId, { status });
   };
 
-  // Wrapper for KanbanView's onEditTask prop
   const handleKanbanEditTask = (
     id: string, 
     text: string, 
@@ -177,7 +187,7 @@ export default function TaskdownPage() {
     assignedTo: string | undefined, 
     dueDateMs: number | undefined,
     recurrence: RecurrenceRule,
-    dependentOnId: string | null // Added dependentOnId
+    dependentOnId: string | null 
   ) => {
     const updates: TaskUpdate = {
       title: text,
@@ -189,9 +199,15 @@ export default function TaskdownPage() {
       assigned_to: assignedTo,
       due_date: dueDateMs ? new Date(dueDateMs).toISOString() : null,
       recurrence: recurrence,
-      dependent_on: dependentOnId, // Added dependentOnId
+      dependent_on: dependentOnId, 
     };
     updateTask(id, updates);
+  };
+
+  const handleApplyFiltersAndSort = (newFilters: TaskFilters, newSort: TaskSort) => {
+    setCurrentHookFilters(newFilters);
+    setCurrentHookSort(newSort);
+    // useTasks hook will automatically re-fetch due to useEffect dependency on filters/sort
   };
 
   return (
@@ -204,16 +220,23 @@ export default function TaskdownPage() {
             setSearchTerm={setRawSearchTerm} 
           />
         </div>
-        <Tabs defaultValue="list" value={activeView} onValueChange={(value) => setActiveView(value as 'list' | 'kanban')} className="w-full sm:w-auto">
-          <TabsList className="grid w-full grid-cols-2 sm:w-auto">
-            <TabsTrigger value="list" className="flex items-center gap-2">
-              <List className="h-4 w-4" /> List
-            </TabsTrigger>
-            <TabsTrigger value="kanban" className="flex items-center gap-2">
-              <LayoutGrid className="h-4 w-4" /> Kanban
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex gap-2 items-center">
+          <FilterSortControls
+            currentFilters={currentHookFilters}
+            currentSort={currentHookSort}
+            onApply={handleApplyFiltersAndSort}
+          />
+          <Tabs defaultValue="list" value={activeView} onValueChange={(value) => setActiveView(value as 'list' | 'kanban')} className="w-full sm:w-auto">
+            <TabsList className="grid w-full grid-cols-2 sm:w-auto">
+              <TabsTrigger value="list" className="flex items-center gap-2">
+                <List className="h-4 w-4" /> List
+              </TabsTrigger>
+              <TabsTrigger value="kanban" className="flex items-center gap-2">
+                <LayoutGrid className="h-4 w-4" /> Kanban
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
       </div>
       <main className="flex-grow">
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
@@ -233,12 +256,12 @@ export default function TaskdownPage() {
         
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
           <h2 className="text-lg font-semibold mb-3 text-primary">Filter by Tags</h2>
-          <TagFilter tasks={tasks} activeFilters={activeFilters} setActiveFilters={setActiveFilters} />
+          <TagFilter tasks={tasks} activeFilters={activeTagFilters} setActiveFilters={setActiveTagFilters} />
         </div>
 
         {activeView === 'list' && (
           <ChecklistView
-            tasks={filteredTasks}
+            tasks={clientFilteredTasks} // Use client-side filtered tasks
             isLoading={isLoading}
             onToggleComplete={toggleComplete}
             deleteTask={deleteTask}
@@ -251,7 +274,7 @@ export default function TaskdownPage() {
         )}
         {activeView === 'kanban' && (
           <KanbanView
-            tasks={filteredTasks} 
+            tasks={clientFilteredTasks}  // Use client-side filtered tasks
             isLoading={isLoading}
             onEditTask={handleKanbanEditTask}
             onUpdateTaskStatus={handleUpdateTaskStatus}

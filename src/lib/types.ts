@@ -1,4 +1,6 @@
 export type Priority = 'high' | 'medium' | 'low' | 'none';
+export const PRIORITY_OPTIONS: Priority[] = ['high', 'medium', 'low', 'none'];
+
 
 export interface Attachment {
   id: string;
@@ -46,3 +48,40 @@ export interface Task {
 }
 
 export type Tag = string;
+
+// Types for Filtering and Sorting
+export interface TaskFilters {
+  dueDateStart?: Date | null;
+  dueDateEnd?: Date | null;
+  priorities: Priority[];
+  assignee?: string;
+  statuses: TaskStatus[];
+}
+
+export type SortableTaskFields = 'dueDate' | 'priority' | 'createdAt' | 'title' | 'status';
+
+export interface TaskSort {
+  field: SortableTaskFields;
+  direction: 'asc' | 'desc';
+}
+
+export const DEFAULT_FILTERS: TaskFilters = {
+  priorities: [],
+  statuses: [],
+  assignee: '',
+  dueDateStart: null,
+  dueDateEnd: null,
+};
+
+export const DEFAULT_SORT: TaskSort = {
+  field: 'createdAt',
+  direction: 'desc',
+};
+
+export const SORTABLE_FIELD_OPTIONS: Array<{ value: SortableTaskFields; label: string }> = [
+  { value: 'createdAt', label: 'Creation Date' },
+  { value: 'dueDate', label: 'Due Date' },
+  { value: 'priority', label: 'Priority (Alphabetical)' },
+  { value: 'title', label: 'Title' },
+  { value: 'status', label: 'Status (Alphabetical)' },
+];
