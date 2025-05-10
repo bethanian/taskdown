@@ -9,8 +9,10 @@
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit'; // Use z from genkit as per guidelines
-import type { Priority as PriorityType, TaskStatus as TaskStatusType } from '@/lib/types';
-import { TASK_STATUS_OPTIONS } from '@/lib/types';
+import type { Priority as PriorityType, TaskStatus as TaskStatusType, RecurrenceRule } from '@/lib/types';
+import { TASK_STATUS_OPTIONS, RECURRENCE_OPTIONS } from '@/lib/types';
+
+const RecurrenceEnum = z.enum(RECURRENCE_OPTIONS as [RecurrenceRule, ...RecurrenceRule[]]);
 
 const ProcessedTaskSchema = z.object({
   text: z.string().describe('The text content of the task.'),
@@ -20,6 +22,7 @@ const ProcessedTaskSchema = z.object({
     .describe(
       'The text of the parent task if this is a subtask. Omit if it is a top-level task.'
     ),
+  recurrence: RecurrenceEnum.optional().describe("The recurrence rule for the task (e.g., 'daily', 'weekly'). Defaults to 'none' if not specified."),
 });
 export type ProcessedTask = z.infer<typeof ProcessedTaskSchema>;
 
@@ -35,6 +38,7 @@ const UpdateTaskDetailsSchema = z.object({
   assignedTo: z.string().optional().describe('The name of the new assignee for the task. Provide an empty string or omit to unassign if explicitly stated by user.'),
   tags: z.array(z.string()).optional().describe('The complete new list of tags for the task. If provided, this will replace all existing tags on the task.'),
   notes: z.string().optional().describe('The new notes for the task. If provided, this will replace all existing notes on the task.'),
+  recurrence: RecurrenceEnum.optional().describe("The new recurrence rule for the task. To remove recurrence, set to 'none' if explicitly stated."),
 });
 export type UpdateTaskDetails = z.infer<typeof UpdateTaskDetailsSchema>;
 
@@ -49,13 +53,13 @@ export type ProcessTaskInput = z.infer<typeof ProcessTaskInputSchema>;
 const ProcessTaskOutputSchema = z.object({
   tasksToAdd: z
     .array(ProcessedTaskSchema)
-    .describe('A list of tasks to be added, potentially with parent references.'),
+    .describe('A list of tasks to be added, potentially with parent references and recurrence rules.'),
   tasksToRemove: z
     .array(z.object({text: z.string().describe('The text of the task to remove.')}))
     .describe('A list of tasks to be removed, identified by their text.'),
   tasksToUpdate: z
     .array(UpdateTaskDetailsSchema)
-    .describe('A list of tasks to be updated, identified by their current text, with new details.'),
+    .describe('A list of tasks to be updated, identified by their current text, with new details including recurrence.'),
 });
 export type ProcessTaskOutput = z.infer<typeof ProcessTaskOutputSchema>;
 
@@ -76,6 +80,7 @@ If a user describes a project, goal, or activity (e.g., "plan a birthday party",
 If they also ask for steps, suggestions, or an outline for such a project/goal, create the main task and then generate 2-4 relevant, actionable subtasks under it.
 The user might specify tasks and subtasks. Subtasks are often indicated by phrases like "under [Parent Task Name]", "with subtasks:", "subtasks for [Parent Task Name]:", or using indentation-like phrasing.
 Multiple tasks can be separated by semicolons, "and", or new lines.
+Recognize recurrence patterns like "every day", "weekly", "monthly", "annually" or "yearly". Map these to 'daily', 'weekly', 'monthly', or 'yearly'. If no recurrence is specified, default to 'none'.
 
 Input: "{{naturalLanguageInput}}"
 
@@ -83,6 +88,7 @@ Desired output format is a JSON object with three main keys: "tasksToAdd", "task
 - "tasksToAdd": Array of objects for new tasks. Each object:
   - "text": Task description.
   - "parentTaskText" (optional): Parent task text if it's a subtask.
+  - "recurrence" (optional): Recurrence rule ('none', 'daily', 'weekly', 'monthly', 'yearly'). Defaults to 'none'.
 - "tasksToRemove": Array of objects for tasks to delete. Each object:
   - "text": Exact text of the task to remove.
 - "tasksToUpdate": Array of objects for tasks to modify. Each object:
@@ -93,6 +99,7 @@ Desired output format is a JSON object with three main keys: "tasksToAdd", "task
   - "assignedTo" (optional): New assignee name. If user says to unassign, you can provide an empty string "" or omit this field.
   - "tags" (optional): A COMPLETE new list of tags. This will REPLACE existing tags.
   - "notes" (optional): New notes. This will REPLACE existing notes.
+  - "recurrence" (optional): New recurrence rule. Set to 'none' to remove recurrence.
 
 Examples:
 1. Input: "Create tasks: Plan vacation; Book flights under Plan vacation; Pack bags. Remove old task: Finish report."
@@ -123,22 +130,17 @@ Examples:
        }
      ]
    }
-
-3. Input: "Add task: Call mom. Rename 'Old Meeting' to 'Client Sync'. Delete task: Pay bills."
-    Output: {
-      "tasksToAdd": [
-        { "text": "Call mom" }
-      ],
-      "tasksToRemove": [
-        { "text": "Pay bills" }
-      ],
-      "tasksToUpdate": [
-        {
-          "taskIdentifier": "Old Meeting",
-          "newText": "Client Sync"
-        }
-      ]
-    }
+   
+3. Input: "Add task: Pay rent every month. Change 'Water plants' to repeat weekly."
+   Output: {
+     "tasksToAdd": [
+       { "text": "Pay rent", "recurrence": "monthly" }
+     ],
+     "tasksToRemove": [],
+     "tasksToUpdate": [
+       { "taskIdentifier": "Water plants", "recurrence": "weekly" }
+     ]
+   }
 
 4. Input: "Round System, Gun System; with subtasks under Gun System: Ammo, Reload. Set 'Round System' priority to medium."
     Output: {
@@ -157,90 +159,24 @@ Examples:
         ]
     }
 
-5. Input: "Change task 'Fix Bugs' to 'Resolve Critical Bugs', status Blocked. Remove Shopping list. Add Groceries with subtasks Apples, Bananas"
-    Output: {
-        "tasksToAdd": [
-            { "text": "Groceries" },
-            { "text": "Apples", "parentTaskText": "Groceries" },
-            { "text": "Bananas", "parentTaskText": "Groceries" }
-        ],
-        "tasksToRemove": [
-            { "text": "Shopping list" }
-        ],
-        "tasksToUpdate": [
-            {
-                "taskIdentifier": "Fix Bugs",
-                "newText": "Resolve Critical Bugs",
-                "status": "Blocked"
-            }
-        ]
-    }
-
-6. Input: "Assign 'Review Design' to 'Alice' and add tag 'review'. Unassign 'Submit Report'."
-   Output: {
-     "tasksToAdd": [],
-     "tasksToRemove": [],
-     "tasksToUpdate": [
-       {
-         "taskIdentifier": "Review Design",
-         "assignedTo": "Alice",
-         "tags": ["review"] // Assuming only one tag was mentioned to be added, so existing tags are replaced if not specified further.
-       },
-       {
-         "taskIdentifier": "Submit Report",
-         "assignedTo": "" // Indicate unassignment
-       }
-     ]
-   }
-
-7. Input: "Create a project named 'Client Onboarding', suggest some subtasks for it. Also, delete task 'Old Notes'"
+5. Input: "Remind me to take out trash daily. Mark 'Submit expenses' as not recurring."
    Output: {
      "tasksToAdd": [
-       { "text": "Client Onboarding" },
-       { "text": "Initial consultation call", "parentTaskText": "Client Onboarding" },
-       { "text": "Send welcome package", "parentTaskText": "Client Onboarding" },
-       { "text": "Set up project in internal tools", "parentTaskText": "Client Onboarding" },
-       { "text": "Schedule kick-off meeting", "parentTaskText": "Client Onboarding" }
-     ],
-     "tasksToRemove": [
-       { "text": "Old Notes" }
-     ],
-     "tasksToUpdate": []
-   }
-
-8. Input: "I want to start a small vegetable garden. Can you help me outline the main things I need to do?"
-   Output: {
-     "tasksToAdd": [
-       { "text": "Start a small vegetable garden" },
-       { "text": "Research and select vegetables", "parentTaskText": "Start a small vegetable garden" },
-       { "text": "Prepare garden bed or containers", "parentTaskText": "Start a small vegetable garden" },
-       { "text": "Plant seeds/seedlings", "parentTaskText": "Start a small vegetable garden" },
-       { "text": "Establish watering and care routine", "parentTaskText": "Start a small vegetable garden" }
-     ],
-     "tasksToRemove": [],
-     "tasksToUpdate": []
-   }
-
-9. Input: "Okay, for the 'New Website Launch' project, let's add 'Draft content' and 'Design mockups'. Also, could you remind me to buy milk later? And the 'Client Meeting' task should be marked as Done."
-   Output: {
-     "tasksToAdd": [
-       { "text": "Draft content", "parentTaskText": "New Website Launch" },
-       { "text": "Design mockups", "parentTaskText": "New Website Launch" },
-       { "text": "Buy milk" }
+       { "text": "Take out trash", "recurrence": "daily" }
      ],
      "tasksToRemove": [],
      "tasksToUpdate": [
-       { "taskIdentifier": "Client Meeting", "status": "Done" }
+       { "taskIdentifier": "Submit expenses", "recurrence": "none" }
      ]
    }
-
 
 Make sure to correctly identify parent-child relationships for subtasks.
 If no tasks are to be added, removed, or updated, return empty arrays for the respective keys.
 The "text" field in "tasksToAdd" should be the pure task description without prefixes like "Add task:".
 For "tasksToUpdate", "taskIdentifier" MUST be the current name of the task. If renaming, "newText" should be the new name.
-If a field is not mentioned for update, do not include it in the "tasksToUpdate" object for that task (e.g., if only priority changes, only include "taskIdentifier" and "priority").
+If a field is not mentioned for update, do not include it in the "tasksToUpdate" object for that task.
 If the user mentions a project or high-level goal and asks for steps or an outline, create the main task first, then the steps as subtasks under it.
+If a recurrence like "every year" or "annually" is mentioned, map it to "yearly".
 `,
 });
 
@@ -254,16 +190,12 @@ const processTaskInputFlow = ai.defineFlow(
     const {output} = await prompt(input);
     if (!output) {
       console.error("AI prompt did not return a valid output for processTaskInputFlow. Input was:", input);
-      // Return a default empty structure to prevent crashes downstream
       return { tasksToAdd: [], tasksToRemove: [], tasksToUpdate: [] };
     }
-    // Ensure the output conforms to the schema, especially empty arrays if nothing to add/remove/update
     return {
-        tasksToAdd: output.tasksToAdd || [],
+        tasksToAdd: output.tasksToAdd?.map(task => ({ ...task, recurrence: task.recurrence || 'none' })) || [],
         tasksToRemove: output.tasksToRemove || [],
         tasksToUpdate: output.tasksToUpdate || [],
     };
   }
 );
-
-    

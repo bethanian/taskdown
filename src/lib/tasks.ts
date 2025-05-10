@@ -2,6 +2,7 @@
 
 import { supabase } from './supabaseClient'; // Assuming supabaseClient.ts exports a 'supabase' instance
 import { PostgrestError } from '@supabase/supabase-js';
+import type { RecurrenceRule } from './types'; // Import RecurrenceRule
 
 // Define the Task type based on the schema in taskdown.md
 export interface Task {
@@ -20,6 +21,7 @@ export interface Task {
   parent_id?: string | null; // uuid, nullable (FK to tasks.id for subtasks)
   attachments?: any | null; // jsonb, nullable
   user_id?: string | null; // uuid, nullable (FK to auth.users.id)
+  recurrence: RecurrenceRule; // text, default: "none"
 }
 
 // Type for the fields that can be updated in editTask
@@ -117,3 +119,4 @@ export async function generateShareLink(
   }
   return { data: data as Task | null, error };
 } 
+```

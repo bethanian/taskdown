@@ -14,10 +14,10 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
-import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule } from '@/lib/types';
+import { DEFAULT_TASK_STATUS, TASK_STATUS_OPTIONS, DEFAULT_RECURRENCE_RULE, RECURRENCE_OPTIONS, RECURRENCE_LABELS } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
-import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User, CalendarDays } from 'lucide-react';
+import { XIcon, TagIcon, FlagIcon, FlagOff, LinkIcon, Paperclip, ListChecks, User, CalendarDays, RefreshCw } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -26,7 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { DatePicker } from '@/components/ui/date-picker'; // Import the DatePicker
+import { DatePicker } from '@/components/ui/date-picker'; 
 
 interface EditTaskDialogProps {
   isOpen: boolean;
@@ -41,7 +41,8 @@ interface EditTaskDialogProps {
     newAttachments: Attachment[],
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
-    newDueDate: number | undefined // Added dueDate
+    newDueDate: number | undefined,
+    newRecurrence: RecurrenceRule // Added recurrence
   ) => void;
 }
 
@@ -72,7 +73,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
   const [currentAttachmentNameInput, setCurrentAttachmentNameInput] = useState('');
   const [status, setStatus] = useState<TaskStatus>(DEFAULT_TASK_STATUS);
   const [assignedTo, setAssignedTo] = useState<string | undefined>(undefined);
-  const [dueDate, setDueDate] = useState<Date | undefined>(undefined); // State for due date
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [recurrence, setRecurrence] = useState<RecurrenceRule>(DEFAULT_RECURRENCE_RULE); // Added recurrence state
 
   useEffect(() => {
     if (task) {
@@ -83,7 +85,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       setAttachments(task.attachments || []);
       setStatus(task.status || DEFAULT_TASK_STATUS);
       setAssignedTo(task.assignedTo || undefined);
-      setDueDate(task.dueDate ? new Date(task.dueDate) : undefined); // Set due date from task
+      setDueDate(task.dueDate ? new Date(task.dueDate) : undefined);
+      setRecurrence(task.recurrence || DEFAULT_RECURRENCE_RULE); // Set recurrence from task
       setCurrentTagInput('');
       setCurrentAttachmentUrlInput('');
       setCurrentAttachmentNameInput('');
@@ -101,7 +104,8 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
         attachments, 
         status, 
         assignedTo,
-        dueDate ? dueDate.getTime() : undefined // Pass dueDate as timestamp
+        dueDate ? dueDate.getTime() : undefined,
+        recurrence // Pass recurrence
       );
       onOpenChange(false);
     }
@@ -161,7 +165,6 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
       <DialogContent 
         className="sm:max-w-md md:max-w-lg lg:max-w-xl"
         onPointerDownOutside={(event) => {
-          // Allow interaction with elements within Radix UI Popover content or react-day-picker
           const target = event.target as HTMLElement;
           if (target.closest('[data-radix-popover-content]') || target.closest('.rdp')) {
             event.preventDefault();
@@ -247,6 +250,28 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
             <div className="col-span-3">
                <DatePicker date={dueDate} setDate={setDueDate} />
             </div>
+          </div>
+
+          {/* Recurrence */}
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="edit-task-recurrence" className="text-right col-span-1">
+              Recurrence
+            </Label>
+            <Select value={recurrence} onValueChange={(value) => setRecurrence(value as RecurrenceRule)}>
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Set recurrence" />
+              </SelectTrigger>
+              <SelectContent>
+                {RECURRENCE_OPTIONS.map(r => (
+                  <SelectItem key={r} value={r}>
+                    <div className="flex items-center">
+                       <RefreshCw className="h-4 w-4 mr-2 text-muted-foreground" />
+                      {RECURRENCE_LABELS[r]}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Assigned To */}
@@ -385,3 +410,5 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
     </Dialog>
   );
 }
+
+```

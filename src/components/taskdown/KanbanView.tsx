@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task, TaskStatus, Priority, Attachment } from '@/lib/types';
+import type { Task, TaskStatus, Priority, Attachment, RecurrenceRule } from '@/lib/types';
 import { TASK_STATUS_OPTIONS } from '@/lib/types';
 import { KanbanColumn } from './KanbanColumn';
 import { EditTaskDialog } from './EditTaskDialog'; 
@@ -14,13 +14,24 @@ import Image from 'next/image';
 interface KanbanViewProps {
   tasks: Task[];
   isLoading: boolean;
-  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined, dueDate: number | undefined) => void;
+  onEditTask: (
+    id: string, 
+    text: string, 
+    tags: string[], 
+    priority: Priority, 
+    notes: string, 
+    attachments: Attachment[], 
+    status: TaskStatus, 
+    assignedTo: string | undefined, 
+    dueDate: number | undefined,
+    recurrence: RecurrenceRule // Added recurrence
+  ) => void;
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
-  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete']; // CORRECTED SIGNATURE
+  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete']; 
   onDeleteTask: (id: string) => void;
-  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority']; // Match type from useTasks
-  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];         // Match type from useTasks
-  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink']; // Match type from useTasks
+  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority']; 
+  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];         
+  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink']; 
   searchTerm?: string;
 }
 
@@ -29,7 +40,7 @@ export function KanbanView({
   isLoading, 
   onEditTask, 
   onUpdateTaskStatus,
-  onToggleComplete, // This prop now has the correct type
+  onToggleComplete, 
   onDeleteTask,
   onUpdatePriority,
   onAddSubtask,
@@ -53,9 +64,10 @@ export function KanbanView({
     newAttachments: Attachment[],
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
-    newDueDate: number | undefined // Added newDueDate
+    newDueDate: number | undefined,
+    newRecurrence: RecurrenceRule // Added recurrence
   ) => {
-    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate); // Pass newDueDate
+    onEditTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate, newRecurrence); // Pass newRecurrence
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -132,3 +144,5 @@ export function KanbanView({
     </div>
   );
 }
+
+```

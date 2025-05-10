@@ -7,7 +7,7 @@ import { ChecklistView } from '@/components/taskdown/ChecklistView';
 import { KanbanView } from '@/components/taskdown/KanbanView'; 
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
-import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule } from '@/lib/types';
 import type { TaskUpdate } from '@/lib/tasks';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
@@ -175,7 +175,8 @@ export default function TaskdownPage() {
     attachments: Attachment[], 
     status: TaskStatus, 
     assignedTo: string | undefined, 
-    dueDateMs: number | undefined
+    dueDateMs: number | undefined,
+    recurrence: RecurrenceRule // Added recurrence
   ) => {
     const updates: TaskUpdate = {
       title: text,
@@ -185,7 +186,8 @@ export default function TaskdownPage() {
       attachments,
       status,
       assigned_to: assignedTo,
-      due_date: dueDateMs ? new Date(dueDateMs).toISOString() : null
+      due_date: dueDateMs ? new Date(dueDateMs).toISOString() : null,
+      recurrence: recurrence, // Added recurrence
     };
     updateTask(id, updates);
   };

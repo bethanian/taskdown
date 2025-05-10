@@ -1,12 +1,14 @@
+
 // src/components/taskdown/ChecklistItem.tsx
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import type { Task, Priority, Attachment } from '@/lib/types';
+import type { Task, Priority, Attachment, RecurrenceRule } from '@/lib/types';
+import { RECURRENCE_LABELS } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks } from 'lucide-react';
+import { GripVertical, Trash2, Edit3, TagIcon, FlagIcon, FlagOff, Check, Plus, ChevronDown, FileText, LinkIcon, Paperclip, User, Share2, CalendarDays, ListChecks, RefreshCw } from 'lucide-react';
 import { ChecklistItemContent } from './ChecklistItemContent';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
@@ -271,6 +273,17 @@ export function ChecklistItem({
                         </Badge>
                       </TooltipTrigger>
                       <TooltipContent><p>{dueDateInfo.tooltip}</p></TooltipContent>
+                    </Tooltip>
+                  )}
+                  {task.recurrence && task.recurrence !== 'none' && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="text-xs py-0.5 px-1.5 items-center text-purple-600 border-purple-600/50">
+                           <RefreshCw className="h-2.5 w-2.5 mr-0.5" />
+                           {RECURRENCE_LABELS[task.recurrence]}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent><p>Recurs {RECURRENCE_LABELS[task.recurrence].toLowerCase()}</p></TooltipContent>
                     </Tooltip>
                   )}
                   {task.tags && task.tags.length > 0 && task.tags.map(tag => (

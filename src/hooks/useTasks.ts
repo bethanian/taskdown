@@ -2,31 +2,21 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-// import localforage from 'localforage'; // REMOVE: No longer using localforage
-import { supabase } from '@/lib/supabaseClient'; // ADD: Supabase client
-// Corrected import: TASK_STATUS_OPTIONS and DEFAULT_TASK_STATUS are values, Priority and TaskStatus are types.
-import type { Task as TaskType, Attachment, Priority, TaskStatus } from '@/lib/types'; 
-import { TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS } from '@/lib/types'; 
-// import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants'; // REMOVE: No longer using for primary storage
+import { supabase } from '@/lib/supabaseClient'; 
+import type { Task as TaskType, Attachment, Priority, TaskStatus, RecurrenceRule } from '@/lib/types'; 
+import { TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS, DEFAULT_RECURRENCE_RULE } from '@/lib/types'; 
 import { useToast } from '@/hooks/use-toast';
-// MODIFIED: Import the actual AI processing function and its types
-import { processTaskInput as processAiInputFlow, type ProcessTaskInput, type ProcessTaskOutput, type ProcessedTask, type UpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
-// MODIFIED: Import task manipulation functions from src/lib/tasks
+import { processTaskInput as processAiInputFlow, type ProcessTaskInput, type ProcessTaskOutput, type ProcessedTask, type UpdateTaskDetails as AiUpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
 import { 
   editTask as editTaskSupabase, 
-  // toggleComplete as toggleCompleteSupabase, // No longer directly used by useTasks.toggleComplete
+  type TaskUpdate as SupabaseTaskUpdatePayload,
+  type Task as SupabaseTask, // Import the Task type from lib/tasks
   generateShareLink as generateShareLinkSupabase,
-  type TaskUpdate as SupabaseTaskUpdatePayload // Keep this type for mapping
 } from '@/lib/tasks';
+import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
 
-// localforage.config({ // REMOVE
-//   name: 'TaskdownDB',
-//   storeName: 'tasks',
-//   description: 'Stores tasks for Taskdown app',
-// });
 
-// --- Supabase Data Mapping Helpers ---
-interface SupabaseTaskRow extends Record<string, any> { // Define a more specific type for Supabase rows
+interface SupabaseTaskRow extends Record<string, any> { 
   id: string;
   title: string;
   completed: boolean;
@@ -40,48 +30,55 @@ interface SupabaseTaskRow extends Record<string, any> { // Define a more specifi
   attachments: Attachment[] | null;
   assigned_to: string | null;
   share_id: string | null;
-  parent_id: string | null; // Crucial for hierarchy
+  parent_id: string | null;
+  recurrence: RecurrenceRule | null; // Added recurrence
 }
 
 const fromSupabase = (row: SupabaseTaskRow): TaskType => {
-        return {
+  return {
     id: row.id,
     text: row.title,
     completed: row.completed,
     tags: row.tags || [],
     priority: row.priority || 'none',
     status: row.status || DEFAULT_TASK_STATUS,
-    createdAt: new Date(row.created_at).getTime(), // Assuming created_at is always present
-    updateAt: new Date(row.update_at).getTime(), // Assuming updated_at is always present
+    createdAt: new Date(row.created_at).getTime(),
+    updateAt: new Date(row.update_at).getTime(),
     dueDate: row.due_date ? new Date(row.due_date).getTime() : undefined,
-    subtasks: [], // Populated by buildHierarchy
+    subtasks: [], 
     notes: row.notes || '',
     attachments: row.attachments || [],
     assignedTo: row.assigned_to || undefined,
     shareId: row.share_id || undefined,
+    recurrence: row.recurrence || DEFAULT_RECURRENCE_RULE, // Added recurrence
   };
 };
 
-const toSupabaseInsert = (taskText: string, parentId?: string | null): Partial<SupabaseTaskRow> => {
+const toSupabaseInsert = (
+  taskText: string, 
+  parentId?: string | null,
+  recurrence?: RecurrenceRule,
+  dueDate?: string | null
+): Partial<SupabaseTaskRow> => {
   const now = new Date().toISOString();
-      return {
+  return {
     title: taskText,
     completed: false,
     tags: [],
     priority: 'none',
     status: DEFAULT_TASK_STATUS,
-    created_at: now, // Supabase can also default this with now()
-    update_at: now, // Supabase can also default this with now()
-    due_date: null,
+    created_at: now, 
+    update_at: now, 
+    due_date: dueDate || null,
     notes: '',
     attachments: [],
     assigned_to: null,
     share_id: null,
     parent_id: parentId || null,
+    recurrence: recurrence || DEFAULT_RECURRENCE_RULE, // Added recurrence
   };
 };
 
-// Helper function to build hierarchy from a flat list of tasks that include their raw parent_id
 const buildHierarchyRecursive = (
     items: Array<TaskType & { db_parent_id: string | null }>,
     parentId: string | null
@@ -92,10 +89,9 @@ const buildHierarchyRecursive = (
       ...item,
       subtasks: buildHierarchyRecursive(items, item.id),
     }))
-    .sort((a, b) => b.createdAt - a.createdAt); // Sort by creation time, newest first
+    .sort((a, b) => b.createdAt - a.createdAt); 
 };
 
-// Helper function to find a task (and its subtasks) by text recursively
 const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskType | null => {
   for (const task of tasksToSearch) {
     if (task.text === text) {
@@ -111,7 +107,6 @@ const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskT
   return null;
 };
 
-// NEW: Recursive helper to update a task in a list (including subtasks)
 const updateTaskInList = (
   taskList: TaskType[],
   taskId: string,
@@ -127,6 +122,23 @@ const updateTaskInList = (
     return task;
   });
 };
+
+function calculateNextDueDate(currentDueDateMs: number, recurrence: RecurrenceRule): Date | null {
+  const currentDate = new Date(currentDueDateMs);
+  switch (recurrence) {
+    case 'daily':
+      return addDays(currentDate, 1);
+    case 'weekly':
+      return addWeeks(currentDate, 1);
+    case 'monthly':
+      return addMonths(currentDate, 1);
+    case 'yearly':
+      return addYears(currentDate, 1);
+    case 'none':
+    default:
+      return null;
+  }
+}
 
 export function useTasks() {
   const [tasks, setTasks] = useState<TaskType[]>([]);
@@ -165,12 +177,38 @@ export function useTasks() {
     fetchAndSetTasks();
   }, [fetchAndSetTasks]);
 
-  const addTask = useCallback(async (text: string, parentId?: string): Promise<string | null> => {
+  const addTaskInternal = useCallback(async (
+    text: string, 
+    parentId?: string, 
+    recurrence?: RecurrenceRule,
+    dueDate?: number, // timestamp for consistency with TaskType
+    notes?: string,
+    tags?: string[],
+    priority?: Priority,
+    assignedTo?: string,
+    attachments?: Attachment[],
+    status?: TaskStatus
+  ): Promise<string | null> => {
     if (!text.trim()) {
       toast({ title: "Info", description: "Task text cannot be empty." });
       return null;
     }
-    const taskPayload = toSupabaseInsert(text, parentId);
+    const taskPayload: Partial<SupabaseTaskRow> = {
+      title: text,
+      parent_id: parentId || null,
+      recurrence: recurrence || DEFAULT_RECURRENCE_RULE,
+      due_date: dueDate ? new Date(dueDate).toISOString() : null,
+      notes: notes || '',
+      tags: tags || [],
+      priority: priority || 'none',
+      assigned_to: assignedTo || null,
+      attachments: attachments || [],
+      status: status || DEFAULT_TASK_STATUS,
+      completed: false,
+      created_at: new Date().toISOString(),
+      update_at: new Date().toISOString(),
+    };
+
     const { data: newSupabaseTask, error } = await supabase
       .from('tasks')
       .insert(taskPayload)
@@ -191,73 +229,49 @@ export function useTasks() {
       return null;
     }
   }, [toast, fetchAndSetTasks]);
+  
+  const addTask = useCallback(async (text: string, parentId?: string): Promise<string | null> => {
+    return addTaskInternal(text, parentId);
+  }, [addTaskInternal]);
 
-  const addSubtask = useCallback(async (parentId: string, text: string) => {
-    return addTask(text, parentId);
-  }, [addTask]);
 
-  const deleteTask = useCallback(async (id: string) => {
-    // First, recursively find all descendant task IDs to ensure they are deleted if not using ON DELETE CASCADE
-    // This is a client-side recursive delete. For true atomicity, a stored procedure or relying on ON DELETE CASCADE is better.
-    const descendantIdsToDelete: string[] = [];
-    const findDescendantsRecursive = (parentIdToDelete: string, currentTasks: TaskType[]) => {
-      currentTasks.forEach(task => {
-        if ((task as any).db_parent_id === parentIdToDelete) { // Check against the temporarily stored db_parent_id
-          descendantIdsToDelete.push(task.id);
-          if (task.subtasks && task.subtasks.length > 0) {
-            findDescendantsRecursive(task.id, task.subtasks); // Incorrect: task.subtasks are already filtered children
-          }
-        }
-      });
+  const handleRecurrence = useCallback(async (completedTask: TaskType) => {
+    if (!completedTask.recurrence || completedTask.recurrence === 'none' || !completedTask.dueDate) {
+      return;
+    }
+
+    const nextDueDate = calculateNextDueDate(completedTask.dueDate, completedTask.recurrence);
+    if (!nextDueDate) {
+      return;
+    }
+
+    const newRecurringTask = {
+      title: completedTask.text,
+      notes: completedTask.notes,
+      tags: completedTask.tags,
+      priority: completedTask.priority,
+      assigned_to: completedTask.assignedTo,
+      attachments: completedTask.attachments,
+      recurrence: completedTask.recurrence,
+      parent_id: (tasks.find(t => t.subtasks?.some(st => st.id === completedTask.id))?.id) || null, // Keep parent_id if it was a subtask
+      due_date: nextDueDate.toISOString(),
+      completed: false,
+      status: DEFAULT_TASK_STATUS,
+      created_at: new Date().toISOString(),
+      update_at: new Date().toISOString(),
     };
-    // To use findDescendantsRecursive correctly, we need the flat list of tasks before hierarchy building,
-    // or pass the full hierarchical tasks state and traverse it. The current `tasks` state is hierarchical.
-    // A simpler approach for now if not using ON DELETE CASCADE is to delete the main task
-    // and let the user handle subtasks, or implement a proper recursive delete in Supabase (e.g. Edge Function).
 
-    // For this implementation, we'll delete the specified task and its direct children as fetched by current logic.
-    // A more robust solution would be ON DELETE CASCADE in the DB.
+    const { error: insertError } = await supabase.from('tasks').insert(newRecurringTask).select().single();
 
-    // Collect IDs to delete: the task itself and its current subtasks in the state
-    const idsToDelete = new Set<string>();
-    idsToDelete.add(id);
-
-    const queue: TaskType[] = [...tasks];
-    while(queue.length > 0) {
-        const currentTask = queue.shift();
-        if (!currentTask) continue;
-        if (currentTask.id === id || Array.from(idsToDelete).some(delId => (currentTask as any).db_parent_id === delId)) {
-            idsToDelete.add(currentTask.id); // Add task if its parent is marked for deletion
-        }
-        if (currentTask.subtasks) {
-            queue.push(...currentTask.subtasks);
-        }
-    }
-    // The above logic is flawed for finding all descendants in a hierarchical client state for deletion.
-    // Correct client-side recursive deletion requires careful traversal or a flat list with parent_ids.
-
-    // Simplification: Delete the task and assume ON DELETE CASCADE is handled by DB or subtasks are handled manually.
-    // Or, perform a multi-delete if we know all IDs.
-    // For now, just delete the single task ID passed.
-    // If ON DELETE CASCADE is set on the `parent_id` foreign key in Supabase, subtasks will be deleted automatically.
-    // If not, this will orphan subtasks.
-
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.error("Failed to delete task from Supabase", error);
-      toast({ title: "Error", description: `Failed to delete task: ${error.message}`, variant: "destructive" });
+    if (insertError) {
+      console.error("Failed to create recurring task instance", insertError);
+      toast({ title: "Error", description: `Failed to create next recurring task: ${insertError.message}`, variant: "destructive" });
     } else {
-      toast({ title: "Success", description: "Task deleted." });
-      // Refetch all tasks to update the UI
-      await fetchAndSetTasks();
+      toast({ title: "Task Recurred", description: `New instance of "${completedTask.text}" created.`});
+      // Don't call fetchAndSetTasks here as it will be called by the outer function (toggleComplete or updateTask)
     }
-  }, [toast, fetchAndSetTasks, tasks]); // tasks dependency for potential local filtering if not refetching
+  }, [toast, tasks]); // tasks is needed to find parent_id
 
-  // REFACTORED: updateTask for optimistic updates
   const updateTask = useCallback(async (id: string, updates: SupabaseTaskUpdatePayload) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required for updating.", variant: "destructive" });
@@ -267,7 +281,7 @@ export function useTasks() {
       return;
     }
 
-    const originalTasks = tasks;
+    const originalTasks = [...tasks]; // Shallow copy for optimistic rollback
 
     const applyOptimisticUpdates = (task: TaskType): TaskType => {
       const taskTypeUpdates: Partial<TaskType> = {};
@@ -280,7 +294,6 @@ export function useTasks() {
         if (validPriorities.includes(updates.priority as Priority)) {
           taskTypeUpdates.priority = updates.priority as Priority;
         } else {
-          console.warn(`Optimistic update: Invalid priority value "${updates.priority}" received, defaulting to 'none'.`);
           taskTypeUpdates.priority = 'none';
         }
       }
@@ -289,10 +302,11 @@ export function useTasks() {
         if (TASK_STATUS_OPTIONS.includes(updates.status as TaskStatus)) {
           taskTypeUpdates.status = updates.status as TaskStatus;
         } else {
-          console.warn(`Optimistic update: Invalid status value "${updates.status}" received, defaulting to DEFAULT_TASK_STATUS.`);
           taskTypeUpdates.status = DEFAULT_TASK_STATUS;
         }
       }
+      if (updates.recurrence !== undefined) taskTypeUpdates.recurrence = updates.recurrence as RecurrenceRule;
+
 
       if (updates.notes !== undefined) taskTypeUpdates.notes = updates.notes || '';
       if (updates.attachments !== undefined) taskTypeUpdates.attachments = updates.attachments || [];
@@ -303,33 +317,56 @@ export function useTasks() {
 
       return { ...task, ...taskTypeUpdates };
     };
-
-    const optimisticallyUpdatedTasks = updateTaskInList(originalTasks, id, applyOptimisticUpdates);
-    setTasks(optimisticallyUpdatedTasks);
+    
+    setTasks(prevTasks => updateTaskInList(prevTasks, id, applyOptimisticUpdates));
 
     const payloadForSupabase = { ...updates, update_at: new Date().toISOString() };
 
     try {
-      const { error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
+      const { data: updatedSupabaseTaskData, error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
       if (supabaseError) {
         throw supabaseError; 
       }
-      // Success toast can be more specific if desired, or kept generic
-      // toast({ title: "Success", description: "Task updated." }); 
-      // No fetchAndSetTasks() here to maintain optimistic update feel
+      
+      if (updatedSupabaseTaskData && updates.completed === true) {
+        const taskForRecurrence = fromSupabase(updatedSupabaseTaskData as unknown as SupabaseTaskRow); 
+        await handleRecurrence(taskForRecurrence);
+      }
+      // After all operations (including potential recurrence), refetch to ensure UI consistency.
+      await fetchAndSetTasks();
+
     } catch (error: any) {
       console.error("Failed to update task in Supabase, rolling back UI.", error);
-      setTasks(originalTasks); // Rollback UI
+      setTasks(originalTasks); 
       toast({ 
         title: "Update Failed", 
         description: `Task update failed: ${error.message}. Changes have been reverted.`, 
         variant: "destructive" 
       });
     }
-  }, [tasks, toast]); // TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS are constants, no need for deps
+  }, [tasks, toast, handleRecurrence, fetchAndSetTasks]);
 
-  // editTask (AI flow) will now use the optimistic updateTask
-  const editTask = useCallback(async (id: string, updatesFromAi: UpdateTaskDetails) => {
+
+  const addSubtask = useCallback(async (parentId: string, text: string) => {
+    return addTask(text, parentId);
+  }, [addTask]);
+
+  const deleteTask = useCallback(async (id: string) => {
+    const { error } = await supabase
+      .from('tasks')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error("Failed to delete task from Supabase", error);
+      toast({ title: "Error", description: `Failed to delete task: ${error.message}`, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Task deleted." });
+      await fetchAndSetTasks();
+    }
+  }, [toast, fetchAndSetTasks]);
+  
+  const editTask = useCallback(async (id: string, updatesFromAi: AiUpdateTaskDetails) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required for AI editing.", variant: "destructive" });
       return;
@@ -341,39 +378,36 @@ export function useTasks() {
     if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
     if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
     if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
-    // dueDate from AI would need mapping here if it was part of UpdateTaskDetails
+    // Recurrence from AI would need mapping here
+    if ((updatesFromAi as any).recurrence !== undefined) supabaseUpdates.recurrence = (updatesFromAi as any).recurrence;
+
 
     if (Object.keys(supabaseUpdates).length === 0) {
       toast({ title: "AI Info", description: "No actionable changes identified by AI for the task update." });
       return;
     }
     
-    await updateTask(id, supabaseUpdates); // Uses the new optimistic updateTask
-    // Toast for AI completion might be better handled by processAiInput or here if needed
-    toast({ title: "Success", description: "Task updated by AI." }); // This might be redundant if updateTask shows its own success
+    await updateTask(id, supabaseUpdates);
+    toast({ title: "Success", description: "Task updated by AI." }); 
 
   }, [toast, updateTask]);
   
-  // REFACTORED: toggleComplete to use optimistic updateTask
   const toggleComplete = useCallback(async (id: string, currentCompleted: boolean) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return;
     }
     const newCompletedStatus = !currentCompleted;
-    await updateTask(id, { completed: newCompletedStatus });
-    // Specific toast for completion
+    // updateTask will handle recurrence and refetching
+    await updateTask(id, { completed: newCompletedStatus }); 
     toast({ title: "Success", description: "Task completion toggled." });
   }, [toast, updateTask]);
 
-  // REFACTORED: updateTaskPriority to use optimistic updateTask
   const updateTaskPriority = useCallback(async (id: string, priority: Priority) => {
     await updateTask(id, { priority });
-    // Specific toast for priority
     toast({ title: "Success", description: "Task priority updated." });
   }, [toast, updateTask]);
 
-  // generateShareLink remains the same, does not need optimistic update for its primary action
   const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
@@ -386,16 +420,10 @@ export function useTasks() {
         return null;
     }
     toast({title: "Share Link Generated", description: `Task share ID: ${updatedTaskAfterShare.share_id}.`});
-    // Potentially update local task with share_id optimistically or refetch for this one task
-    // For now, fetchAndSetTasks is simple, but for true optimistic, this could be refined.
     await fetchAndSetTasks(); 
     return `${window.location.origin}/share/task/${updatedTaskAfterShare.share_id}`;
   }, [toast, fetchAndSetTasks]);
 
-  // processAiInput still uses fetchAndSetTasks indirectly via addTask, deleteTask, editTask (which now uses updateTask)
-  // Consider if processAiInput needs more granular optimistic updates for each sub-operation.
-  // For now, its internal calls to addTask/deleteTask will cause refetches.
-  // editTask within processAiInput now correctly uses the optimistic updateTask.
   const processAiInput = useCallback(async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
     toast({ title: "AI Processing...", description: "Please wait.", duration: 2000});
     try {
@@ -415,10 +443,14 @@ export function useTasks() {
           if (newTaskId) {
             newlyCreatedParentsMap.set(taskToAdd.text, newTaskId);
             operationsPerformed = true;
+            // If AI provides recurrence for new task, it should be handled here
+            if ((taskToAdd as any).recurrence) {
+                await updateTask(newTaskId, { recurrence: (taskToAdd as any).recurrence });
+            }
           }
         }
-        // addTask calls fetchAndSetTasks, so tasks state is updated for next step
-        const currentTasksStateForAISubtasks = tasks; // Capture state after main tasks are added (or rely on tasks being updated)
+        
+        const currentTasksStateForAISubtasks = tasks; 
 
         for (const taskToAdd of subTasksFromAI) {
           let parentId: string | null = null;
@@ -435,12 +467,17 @@ export function useTasks() {
             }
           }
           const newSubtaskId = await addTask(taskToAdd.text, parentId ?? undefined);
-          if (newSubtaskId) operationsPerformed = true;
+           if (newSubtaskId) {
+            operationsPerformed = true;
+            if ((taskToAdd as any).recurrence) {
+                 await updateTask(newSubtaskId, { recurrence: (taskToAdd as any).recurrence });
+            }
+          }
         }
       }
 
       if (aiOutput.tasksToRemove && aiOutput.tasksToRemove.length > 0) {
-        const currentTasksStateForAIDeletion = tasks; // Capture most recent state
+        const currentTasksStateForAIDeletion = tasks; 
         for (const taskToRemove of aiOutput.tasksToRemove) {
           const task = findTaskByTextRecursive(currentTasksStateForAIDeletion, taskToRemove.text);
           if (task) {
@@ -453,12 +490,12 @@ export function useTasks() {
       }
 
       if (aiOutput.tasksToUpdate && aiOutput.tasksToUpdate.length > 0) {
-        // editTask (which uses updateTask) is now optimistic, no full refetch from its direct call.
         const currentTasksStateForAIUpdate = tasks;
         for (const taskToUpdate of aiOutput.tasksToUpdate) {
           const task = findTaskByTextRecursive(currentTasksStateForAIUpdate, taskToUpdate.taskIdentifier); 
           if (task) {
-            await editTask(task.id, taskToUpdate); 
+            // Ensure AiUpdateTaskDetails is correctly cast or mapped to SupabaseTaskUpdatePayload if needed
+            await editTask(task.id, taskToUpdate as AiUpdateTaskDetails); 
             operationsPerformed = true;
           } else {
              toast({title: "AI Info", description: `Task "${taskToUpdate.taskIdentifier}" for update not found.`});
@@ -467,15 +504,11 @@ export function useTasks() {
       }
 
       if (operationsPerformed) {
-        // If addTask or deleteTask were called, fetchAndSetTasks already ran.
-        // If only editTask was called, UI is optimistically updated.
-        // A final fetch might still be desired by some for absolute consistency after batch AI ops.
-        // For now, let's assume individual function refetches (or lack thereof for optimistic ones) are okay.
         toast({ title: "AI Actions Completed", description: "Tasks managed by AI.", duration: 3000 });
       } else if (!aiOutput.tasksToAdd?.length && !aiOutput.tasksToRemove?.length && !aiOutput.tasksToUpdate?.length) {
         toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage.", duration: 3000 });
       }
-      
+      await fetchAndSetTasks(); // Final refetch after all AI operations.
       return aiOutput;
 
     } catch (error: any) {
@@ -483,16 +516,15 @@ export function useTasks() {
       toast({ title: "AI Error", description: error.message || "Failed to process AI command.", variant: "destructive" });
       return null;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow]);
+  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow, updateTask]);
 
   return { 
     tasks, 
     isLoading, 
     addTask,
     deleteTask,
-    editTask, // This is the AI specific editTask, which now calls the general updateTask
-    updateTask, // The general optimistic updateTask
+    editTask, 
+    updateTask, 
     toggleComplete,
     updateTaskPriority,
     addSubtask,
@@ -500,8 +532,5 @@ export function useTasks() {
     processAiInput,
   };
 }
-
-// Ensure old helper functions that are not used are removed to avoid linting errors or confusion.
-// For example, if mapTasksRecursively, filterTasksRecursively etc. were defined globally in this file.
-
     
+```

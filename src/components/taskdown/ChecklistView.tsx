@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
+import type { Task, Priority, Attachment, TaskStatus, RecurrenceRule } from '@/lib/types';
 import type { TaskUpdate } from '@/lib/tasks';
 import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
@@ -73,7 +73,8 @@ export function ChecklistView({
     newAttachments: Attachment[],
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
-    newDueDateMs: number | undefined 
+    newDueDateMs: number | undefined,
+    newRecurrence: RecurrenceRule // Added recurrence
   ) => {
     const updates: TaskUpdate = {
       title: newText,
@@ -84,6 +85,7 @@ export function ChecklistView({
       status: newStatus,
       assigned_to: newAssignedTo === "" ? null : newAssignedTo,
       due_date: newDueDateMs ? new Date(newDueDateMs).toISOString() : null,
+      recurrence: newRecurrence, // Added recurrence
     };
     updateTask(id, updates);
     setIsEditDialogOpen(false);
@@ -95,6 +97,16 @@ export function ChecklistView({
     
     if (over && active.id !== over.id) {
       console.warn("Visual drag-and-drop reordering occurred, but changes are not persisted to the backend with this handler.");
+      // To persist changes, you would call a function here that updates the order in Supabase.
+      // This typically involves adding an 'order' or 'position' field to your tasks table
+      // and then updating these fields for the affected tasks.
+      // For example: updateTaskOrder(active.id, over.id, tasks);
+      // The local state update could be:
+      // setTasks((currentTasks) => {
+      //   const oldIndex = currentTasks.findIndex((task) => task.id === active.id);
+      //   const newIndex = currentTasks.findIndex((task) => task.id === over.id);
+      //   return arrayMove(currentTasks, oldIndex, newIndex);
+      // });
     }
   }
 
@@ -173,3 +185,5 @@ export function ChecklistView({
     </DndContext>
   );
 }
+
+```

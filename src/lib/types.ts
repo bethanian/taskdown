@@ -12,6 +12,18 @@ export type TaskStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Done';
 export const DEFAULT_TASK_STATUS: TaskStatus = 'To Do';
 export const TASK_STATUS_OPTIONS: TaskStatus[] = ['To Do', 'In Progress', 'Blocked', 'Done'];
 
+export type RecurrenceRule = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
+export const DEFAULT_RECURRENCE_RULE: RecurrenceRule = 'none';
+export const RECURRENCE_OPTIONS: RecurrenceRule[] = ['none', 'daily', 'weekly', 'monthly', 'yearly'];
+export const RECURRENCE_LABELS: Record<RecurrenceRule, string> = {
+  none: 'None',
+  daily: 'Daily',
+  weekly: 'Weekly',
+  monthly: 'Monthly',
+  yearly: 'Yearly',
+};
+
+
 export interface Task {
   id: string;
   text: string; // User-entered text, potentially with markdown
@@ -27,7 +39,10 @@ export interface Task {
   attachments?: Attachment[]; // Optional array of attachments
   assignedTo?: string; // Optional: name or ID of the person the task is assigned to
   shareId?: string; // Optional: unique ID for generating a shareable link
+  recurrence: RecurrenceRule; // Added recurrence field
 }
 
 export type Tag = string;
 
+
+```

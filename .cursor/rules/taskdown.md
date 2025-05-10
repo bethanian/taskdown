@@ -21,5 +21,8 @@
 | `parent_id`   | `uuid`      | `NULL`                | Yes      | Foreign key to `tasks.id` (for subtasks).                               |
 | `attachments` | `jsonb`     | `NULL`                | Yes      |                                                                       |
 | `user_id`     | `uuid`      | `NULL`                | Yes      | Foreign key to `auth.users.id` (if applicable for user association).    |
+| `recurrence`  | `text`      | `"none"::text`        | No       | Recurrence rule: 'none', 'daily', 'weekly', 'monthly', 'yearly'.      |
 
 ---
+
+```
