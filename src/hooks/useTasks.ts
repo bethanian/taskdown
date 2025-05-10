@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient'; 
-import type { Task as TaskType, Attachment, Priority, TaskStatus, RecurrenceRule, TaskFilters, TaskSort, SortableTaskFields } from '@/lib/types'; 
+import type { Task as TaskType, Attachment, Priority, TaskStatus, RecurrenceRule, TaskFilters, TaskSort, SortableTaskFields, UserRewards } from '@/lib/types'; 
 import { TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS, DEFAULT_RECURRENCE_RULE, DEFAULT_FILTERS, DEFAULT_SORT } from '@/lib/types'; 
 import { useToast } from '@/hooks/use-toast';
 import { processTaskInput as processAiInputFlow, type ProcessTaskInput, type ProcessTaskOutput, type ProcessedTask, type UpdateTaskDetails as AiUpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
@@ -14,8 +14,8 @@ import {
   type Task as SupabaseTask, 
   generateShareLink as generateShareLinkSupabase,
 } from '@/lib/tasks';
-import { addDays, addWeeks, addMonths, addYears } from 'date-fns';
-
+import { addDays, addWeeks, addMonths, addYears, format, parseISO, isValid, differenceInCalendarDays as dateFnsDifferenceInCalendarDays } from 'date-fns';
+import { useUserRewards } from './useUserRewards'; // Import the rewards hook
 
 interface SupabaseTaskRow extends Record<string, any> { 
   id: string;
@@ -34,6 +34,7 @@ interface SupabaseTaskRow extends Record<string, any> {
   parent_id: string | null;
   recurrence: RecurrenceRule | null;
   dependent_on: string | null; 
+  user_id: string | null;
 }
 
 const fromSupabase = (row: SupabaseTaskRow): TaskType => {
@@ -55,6 +56,7 @@ const fromSupabase = (row: SupabaseTaskRow): TaskType => {
     recurrence: row.recurrence || DEFAULT_RECURRENCE_RULE,
     dependentOnId: row.dependent_on || null, 
     isBlocked: false, 
+    user_id: row.user_id || null,
   };
 };
 
@@ -97,15 +99,12 @@ const buildHierarchyAndResolveDependenciesRecursive = (
         dependentOnTaskName,
       };
     })
-    // Default sort order before applying user-defined sort from Supabase.
-    // The main sorting now happens in the Supabase query.
-    // This local sort is more for presentation of subtasks if Supabase doesn't sort them hierarchically.
-    .sort((a, b) => a.createdAt - b.createdAt); // Sort subtasks by creation date (ascending)
+    .sort((a, b) => a.createdAt - b.createdAt); 
 };
 
 const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskType | null => {
   for (const task of tasksToSearch) {
-    if (task.text.toLowerCase() === text.toLowerCase()) { // Case-insensitive search
+    if (task.text.toLowerCase() === text.toLowerCase()) { 
       return task;
     }
     if (task.subtasks && task.subtasks.length > 0) {
@@ -151,7 +150,6 @@ function calculateNextDueDate(currentDueDateMs: number, recurrence: RecurrenceRu
   }
 }
 
-// Helper to map frontend sort fields to Supabase column names
 const mapSortFieldToDbColumn = (field: SortableTaskFields): string => {
   switch (field) {
     case 'dueDate': return 'due_date';
@@ -159,7 +157,7 @@ const mapSortFieldToDbColumn = (field: SortableTaskFields): string => {
     case 'title': return 'title';
     case 'priority': return 'priority';
     case 'status': return 'status';
-    default: return 'created_at'; // Default fallback
+    default: return 'created_at'; 
   }
 };
 
@@ -167,23 +165,39 @@ export function useTasks() {
   const [tasks, setTasks] = useState<TaskType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
+  const { handleTaskCompletion: handleRewardsForTaskCompletion } = useUserRewards();
+
 
   const [filters, setFilters] = useState<TaskFilters>(DEFAULT_FILTERS);
   const [sort, setSort] = useState<TaskSort>(DEFAULT_SORT);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setCurrentUserId(user?.id || null);
+    };
+    fetchUser();
+     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      setCurrentUserId(session?.user?.id || null);
+    });
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
 
   const fetchAndSetTasks = useCallback(async () => {
     setIsLoading(true);
     let query = supabase.from('tasks').select('*');
 
-    // Apply filters
     if (filters.dueDateStart) {
-      query = query.gte('due_date', filters.dueDateStart.toISOString().slice(0, 10)); // YYYY-MM-DD
+      query = query.gte('due_date', filters.dueDateStart.toISOString().slice(0, 10)); 
     }
     if (filters.dueDateEnd) {
-      // Add 1 day to dueDateEnd to make it inclusive of the selected end date
       const inclusiveEndDate = new Date(filters.dueDateEnd);
       inclusiveEndDate.setDate(inclusiveEndDate.getDate() + 1);
-      query = query.lt('due_date', inclusiveEndDate.toISOString().slice(0, 10)); // YYYY-MM-DD
+      query = query.lt('due_date', inclusiveEndDate.toISOString().slice(0, 10)); 
     }
     if (filters.priorities.length > 0) {
       query = query.in('priority', filters.priorities);
@@ -195,15 +209,11 @@ export function useTasks() {
       query = query.in('status', filters.statuses);
     }
 
-    // Apply sorting
     const dbSortField = mapSortFieldToDbColumn(sort.field);
     query = query.order(dbSortField, { 
         ascending: sort.direction === 'asc',
-        // For text fields like title, priority, status, nullsLast is often preferred
-        // For date fields, nullsFirst might be preferred if ascending means "sooner"
         nullsFirst: sort.direction === 'asc' ? true : false 
     });
-    // Add secondary sort for stability if primary sort values are the same
     if (dbSortField !== 'created_at') {
         query = query.order('created_at', { ascending: false });
     }
@@ -286,6 +296,7 @@ export function useTasks() {
       created_at: new Date().toISOString(),
       update_at: new Date().toISOString(),
       dependent_on: actualDependentOnId || null, 
+      user_id: currentUserId,
     };
 
     const { data: newSupabaseTask, error } = await supabase
@@ -307,7 +318,7 @@ export function useTasks() {
       toast({ title: "Error", description: "Task added but no data returned.", variant: "destructive" });
       return null;
     }
-  }, [toast, fetchAndSetTasks, tasks]); 
+  }, [toast, fetchAndSetTasks, tasks, currentUserId]); 
   
   const addTask = useCallback(async (text: string, parentId?: string): Promise<string | null> => {
     return addTaskInternal(text, parentId);
@@ -353,6 +364,7 @@ export function useTasks() {
       created_at: new Date().toISOString(),
       update_at: new Date().toISOString(),
       dependent_on: completedTask.dependentOnId || null, 
+      user_id: completedTask.user_id || currentUserId,
     };
 
     const { error: insertError } = await supabase.from('tasks').insert(newRecurringTask).select().single();
@@ -363,7 +375,7 @@ export function useTasks() {
     } else {
       toast({ title: "Task Recurred", description: `New instance of "${completedTask.text}" created.`});
     }
-  }, [toast, tasks]); 
+  }, [toast, tasks, currentUserId]); 
 
   const updateTask = useCallback(async (id: string, updates: SupabaseTaskUpdatePayload) => {
     if (!id) {
@@ -376,12 +388,18 @@ export function useTasks() {
         toast({ title: "Error", description: "A task cannot depend on itself.", variant: "destructive" });
         return;
     }
+    if (!existingTask) {
+        toast({ title: "Error", description: `Task with ID ${id} not found for update.`, variant: "destructive" });
+        await fetchAndSetTasks(); // Refresh tasks if local state is out of sync
+        return;
+    }
+
 
     if (Object.keys(updates).length === 0) {
       return; 
     }
 
-    const originalTasks = JSON.parse(JSON.stringify(tasks)); // Deep copy for potential rollback
+    const originalTasks = JSON.parse(JSON.stringify(tasks)); 
 
     const applyOptimisticUpdates = (task: TaskType): TaskType => {
       const taskTypeUpdates: Partial<TaskType> = {};
@@ -411,6 +429,8 @@ export function useTasks() {
       if (updates.assigned_to !== undefined) taskTypeUpdates.assignedTo = updates.assigned_to || undefined;
       if (updates.due_date !== undefined) taskTypeUpdates.dueDate = updates.due_date ? new Date(updates.due_date).getTime() : undefined;
       if (updates.dependent_on !== undefined) taskTypeUpdates.dependentOnId = updates.dependent_on; 
+      if (updates.user_id !== undefined) taskTypeUpdates.user_id = updates.user_id;
+
 
       taskTypeUpdates.updateAt = new Date().getTime(); 
       return { ...task, ...taskTypeUpdates };
@@ -419,13 +439,18 @@ export function useTasks() {
     setTasks(prevTasks => updateTaskInList(prevTasks, id, applyOptimisticUpdates));
 
     const payloadForSupabase = { ...updates, update_at: new Date().toISOString() };
+    if (payloadForSupabase.user_id === undefined && existingTask.user_id) {
+        payloadForSupabase.user_id = existingTask.user_id;
+    } else if (payloadForSupabase.user_id === undefined && currentUserId) {
+        payloadForSupabase.user_id = currentUserId;
+    }
+
 
     try {
       const { data: updatedSupabaseTaskData, error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
       
       if (supabaseError) {
         if (supabaseError.code === 'PGRST116' && supabaseError.message.includes("The result contains 0 rows")) {
-            // This means the task might have been deleted or RLS prevented access.
             console.warn(`Task with ID ${id} not found during update or RLS prevented update. Fetching latest tasks.`);
             await fetchAndSetTasks();
             return;
@@ -437,9 +462,13 @@ export function useTasks() {
         throw supabaseError; 
       }
       
-      if (updatedSupabaseTaskData && updates.completed === true) {
-        const taskForRecurrence = fromSupabase(updatedSupabaseTaskData as unknown as SupabaseTaskRow); 
-        await handleRecurrence(taskForRecurrence);
+      const updatedTaskFromDb = updatedSupabaseTaskData ? fromSupabase(updatedSupabaseTaskData as unknown as SupabaseTaskRow) : null;
+
+      if (updatedTaskFromDb && updates.completed === true && existingTask && !existingTask.completed) {
+        await handleRecurrence(updatedTaskFromDb);
+        if (updatedTaskFromDb.user_id) { // Only give rewards if task has a user
+           await handleRewardsForTaskCompletion(updatedTaskFromDb);
+        }
       }
       await fetchAndSetTasks(); 
 
@@ -458,7 +487,7 @@ export function useTasks() {
         variant: "destructive" 
       });
     }
-  }, [tasks, toast, handleRecurrence, fetchAndSetTasks]);
+  }, [tasks, toast, handleRecurrence, fetchAndSetTasks, handleRewardsForTaskCompletion, currentUserId]);
 
   const addSubtask = useCallback(async (parentId: string, text: string) => {
     return addTask(text, parentId);
@@ -553,7 +582,13 @@ export function useTasks() {
       return;
     }
     const task = findTaskByIdRecursive(tasks, id);
-    if (task?.isBlocked && !currentCompleted) { 
+    if (!task) {
+        toast({ title: "Error", description: "Task not found.", variant: "destructive"});
+        await fetchAndSetTasks(); // Refresh if local state is inconsistent
+        return;
+    }
+
+    if (task.isBlocked && !currentCompleted) { 
         toast({
             title: "Task Blocked",
             description: `Cannot complete task "${task.text}". It is blocked by "${task.dependentOnTaskName}". Complete the dependency first.`,
@@ -564,12 +599,14 @@ export function useTasks() {
     }
 
     const newCompletedStatus = !currentCompleted;
-    await updateTask(id, { completed: newCompletedStatus }); 
-  }, [toast, updateTask, tasks]); 
+    // The main updateTask function will now handle reward logic
+    await updateTask(id, { completed: newCompletedStatus, user_id: task.user_id || currentUserId }); 
+  }, [toast, updateTask, tasks, fetchAndSetTasks, currentUserId]); 
 
   const updateTaskPriority = useCallback(async (id: string, taskPriority: Priority) => {
-    await updateTask(id, { priority: taskPriority });
-  }, [updateTask]);
+    const task = findTaskByIdRecursive(tasks, id);
+    await updateTask(id, { priority: taskPriority, user_id: task?.user_id || currentUserId });
+  }, [updateTask, tasks, currentUserId]);
 
   const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
     if (!id) {
@@ -614,7 +651,6 @@ export function useTasks() {
             undefined, 
             undefined, 
             undefined, 
-            undefined, 
             taskToAdd.dependentOnTaskText 
           );
           if (newTaskId) {
@@ -643,7 +679,6 @@ export function useTasks() {
             taskToAdd.text, 
             parentId ?? undefined, 
             taskToAdd.recurrence,
-            undefined, 
             undefined, 
             undefined, 
             undefined, 
@@ -712,10 +747,9 @@ export function useTasks() {
     addSubtask,
     generateShareLink,
     processAiInput,
-    filters, // Expose current filters
-    setFilters, // Expose setter for filters
-    sort, // Expose current sort
-    setSort, // Expose setter for sort
+    filters, 
+    setFilters, 
+    sort, 
+    setSort, 
   };
 }
-    

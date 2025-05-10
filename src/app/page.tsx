@@ -20,12 +20,13 @@ import { useToast } from '@/hooks/use-toast';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { generateTasksPdf } from '@/lib/pdfGenerator';
-
+import { UserRewardsDisplay } from '@/components/taskdown/UserRewardsDisplay'; // Import UserRewardsDisplay
+import { useUserRewards } from '@/hooks/useUserRewards'; // Import useUserRewards
 
 export default function TaskdownPage() {
   const { 
     tasks, 
-    isLoading, 
+    isLoading: isLoadingTasks, 
     addTask,
     addSubtask,
     toggleComplete,
@@ -39,6 +40,8 @@ export default function TaskdownPage() {
     sort: currentHookSort, 
     setSort: setCurrentHookSort,
   } = useTasks();
+
+  const { userRewards, isLoading: isLoadingRewards } = useUserRewards(); // Use the rewards hook
 
   const [activeTagFilters, setActiveTagFilters] = useState<string[]>([]);
   const [rawSearchTerm, setRawSearchTerm] = useState(''); 
@@ -105,7 +108,7 @@ export default function TaskdownPage() {
   }, [tasks, activeTagFilters, debouncedSearchTerm]);
 
   useEffect(() => {
-    if (isLoading || tasks.length === 0) return;
+    if (isLoadingTasks || tasks.length === 0) return;
 
     const checkReminders = () => {
       const now = new Date();
@@ -168,7 +171,7 @@ export default function TaskdownPage() {
       clearTimeout(timerId);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, isLoading, toast]); 
+  }, [tasks, isLoadingTasks, toast]); 
 
   const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
     updateTask(taskId, { status });
@@ -214,6 +217,11 @@ export default function TaskdownPage() {
   return (
     <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
       <Header />
+
+      <div className="my-6">
+        <UserRewardsDisplay rewards={userRewards} isLoading={isLoadingRewards} />
+      </div>
+
       <div className="my-6 flex flex-col sm:flex-row gap-4 items-center justify-between">
         <div className="w-full sm:w-auto flex-grow">
          <GlobalSearchBar 
@@ -256,7 +264,7 @@ export default function TaskdownPage() {
           <p className="text-sm text-muted-foreground mb-3">
             Try: "Create Design phase with subtasks: Sketches, Wireframes. Add task: Call John. Remove: Old team meeting. Make 'Sketches' depend on 'Finalize brief'."
           </p>
-          <AiTaskInputForm onProcessTasks={processAiInput} disabled={isLoading} /> 
+          <AiTaskInputForm onProcessTasks={processAiInput} disabled={isLoadingTasks} /> 
         </div>
         
         <div className="mb-6 p-6 bg-card rounded-lg shadow">
@@ -267,7 +275,7 @@ export default function TaskdownPage() {
         {activeView === 'list' && (
           <ChecklistView
             tasks={clientFilteredTasks} 
-            isLoading={isLoading}
+            isLoading={isLoadingTasks}
             onToggleComplete={toggleComplete}
             deleteTask={deleteTask}
             updateTask={updateTask}
@@ -280,7 +288,7 @@ export default function TaskdownPage() {
         {activeView === 'kanban' && (
           <KanbanView
             tasks={clientFilteredTasks}  
-            isLoading={isLoading}
+            isLoading={isLoadingTasks}
             onEditTask={handleKanbanEditTask}
             onUpdateTaskStatus={handleUpdateTaskStatus}
             onToggleComplete={toggleComplete}

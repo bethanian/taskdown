@@ -45,6 +45,7 @@ export interface Task {
   dependentOnId?: string | null; // ID of the task this task depends on
   dependentOnTaskName?: string; // Name of the task this task depends on (for UI display)
   isBlocked?: boolean; // True if this task is blocked by an incomplete dependency
+  user_id?: string | null; // Foreign key to auth.users.id
 }
 
 export type Tag = string;
@@ -85,3 +86,35 @@ export const SORTABLE_FIELD_OPTIONS: Array<{ value: SortableTaskFields; label: s
   { value: 'title', label: 'Title' },
   { value: 'status', label: 'Status (Alphabetical)' },
 ];
+
+// Gamification Types
+export interface BadgeDefinition {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ElementType; // Lucide icon component
+  criteriaDescription: string; // User-friendly description of how to earn it
+  checkCriteria: (rewards: UserRewards, task?: Task) => boolean;
+}
+
+export interface EarnedBadge {
+  id: string; // Corresponds to BadgeDefinition id
+  dateAchieved: number; // Timestamp
+}
+
+export interface UserRewards {
+  user_id: string;
+  points: number;
+  current_streak: number;
+  last_activity_date: string | null; // ISO date string (YYYY-MM-DD)
+  badges_earned: EarnedBadge[];
+  total_tasks_completed: number;
+}
+
+export const DEFAULT_USER_REWARDS: Omit<UserRewards, 'user_id'> = {
+  points: 0,
+  current_streak: 0,
+  last_activity_date: null,
+  badges_earned: [],
+  total_tasks_completed: 0,
+};
