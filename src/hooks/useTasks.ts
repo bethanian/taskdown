@@ -232,7 +232,7 @@ export function useTasks() {
     if (error) {
       console.error("Failed to delete task from Supabase", error);
       toast({ title: "Error", description: `Failed to delete task: ${error.message}`, variant: "destructive" });
-      } else {
+    } else {
       toast({ title: "Success", description: "Task deleted." });
       // Refetch all tasks to update the UI
       await fetchAndSetTasks();
@@ -342,7 +342,7 @@ export function useTasks() {
     
     toast({title: "Share Link Generated", description: `Task share ID: ${updatedTask.share_id}.`});
     await fetchAndSetTasks(); // Refetch to show new share_id if displayed
-    return `${window.location.origin}/view-task/${updatedTask.share_id}`; // Adjusted example link
+    return `${window.location.origin}/share/task/${updatedTask.share_id}`; 
   }, [toast, fetchAndSetTasks]);
 
   // MODIFIED: Use the actual AI flow
