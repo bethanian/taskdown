@@ -144,5 +144,3 @@ export function KanbanView({
     </div>
   );
 }
-
-```

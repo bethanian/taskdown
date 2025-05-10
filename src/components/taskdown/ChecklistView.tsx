@@ -96,17 +96,22 @@ export function ChecklistView({
     const {active, over} = event;
     
     if (over && active.id !== over.id) {
-      console.warn("Visual drag-and-drop reordering occurred, but changes are not persisted to the backend with this handler.");
-      // To persist changes, you would call a function here that updates the order in Supabase.
-      // This typically involves adding an 'order' or 'position' field to your tasks table
-      // and then updating these fields for the affected tasks.
-      // For example: updateTaskOrder(active.id, over.id, tasks);
-      // The local state update could be:
-      // setTasks((currentTasks) => {
-      //   const oldIndex = currentTasks.findIndex((task) => task.id === active.id);
-      //   const newIndex = currentTasks.findIndex((task) => task.id === over.id);
-      //   return arrayMove(currentTasks, oldIndex, newIndex);
-      // });
+      // For local optimistic update, you might want to update the tasks order here
+      // This example does not persist the order to the backend.
+      // A more robust solution would involve updating an 'order' field in your database.
+      const oldIndex = tasks.findIndex((task) => task.id === active.id);
+      const newIndex = tasks.findIndex((task) => task.id === over.id);
+      
+      if (oldIndex !== -1 && newIndex !== -1) {
+        // This is a visual-only reorder for now as persistence is not implemented.
+        // For actual persistence, call an update function here.
+        // setTasks(arrayMove(tasks, oldIndex, newIndex));
+        console.warn("Task reorder attempted. Persistence for drag-and-drop is not yet fully implemented in useTasks.");
+        // To actually persist, you'd need a function like:
+        // updateTaskOrder(active.id as string, newIndex); 
+        // or similar, which would update the 'order' or 'position' field in Supabase
+        // and then re-fetch or re-sort tasks.
+      }
     }
   }
 
@@ -185,5 +190,3 @@ export function ChecklistView({
     </DndContext>
   );
 }
-
-```

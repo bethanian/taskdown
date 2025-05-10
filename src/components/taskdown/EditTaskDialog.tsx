@@ -410,5 +410,3 @@ export function EditTaskDialog({ isOpen, onOpenChange, task, onSave }: EditTaskD
     </Dialog>
   );
 }
-
-```
