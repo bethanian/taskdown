@@ -4,16 +4,17 @@
 import { useState, useEffect, useCallback } from 'react';
 // import localforage from 'localforage'; // REMOVE: No longer using localforage
 import { supabase } from '@/lib/supabaseClient'; // ADD: Supabase client
-import type { Task as TaskType, Priority, Attachment, TaskStatus } from '@/lib/types'; // Rename to avoid conflict
+// Corrected import: TASK_STATUS_OPTIONS and DEFAULT_TASK_STATUS are values, Priority and TaskStatus are types.
+import type { Task as TaskType, Attachment, Priority, TaskStatus } from '@/lib/types'; 
+import { TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS } from '@/lib/types'; 
 // import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants'; // REMOVE: No longer using for primary storage
 import { useToast } from '@/hooks/use-toast';
-import { DEFAULT_TASK_STATUS } from '@/lib/types';
 // MODIFIED: Import the actual AI processing function and its types
 import { processTaskInput as processAiInputFlow, type ProcessTaskInput, type ProcessTaskOutput, type ProcessedTask, type UpdateTaskDetails } from '@/ai/flows/process-task-input-flow';
 // MODIFIED: Import task manipulation functions from src/lib/tasks
 import { 
   editTask as editTaskSupabase, 
-  toggleComplete as toggleCompleteSupabase, 
+  // toggleComplete as toggleCompleteSupabase, // No longer directly used by useTasks.toggleComplete
   generateShareLink as generateShareLinkSupabase,
   type TaskUpdate as SupabaseTaskUpdatePayload // Keep this type for mapping
 } from '@/lib/tasks';
@@ -108,6 +109,23 @@ const findTaskByTextRecursive = (tasksToSearch: TaskType[], text: string): TaskT
     }
   }
   return null;
+};
+
+// NEW: Recursive helper to update a task in a list (including subtasks)
+const updateTaskInList = (
+  taskList: TaskType[],
+  taskId: string,
+  updateFn: (task: TaskType) => TaskType
+): TaskType[] => {
+  return taskList.map(task => {
+    if (task.id === taskId) {
+      return updateFn(task);
+    }
+    if (task.subtasks && task.subtasks.length > 0) {
+      return { ...task, subtasks: updateTaskInList(task.subtasks, taskId, updateFn) };
+    }
+    return task;
+  });
 };
 
 export function useTasks() {
@@ -239,135 +257,159 @@ export function useTasks() {
     }
   }, [toast, fetchAndSetTasks, tasks]); // tasks dependency for potential local filtering if not refetching
 
-  // MODIFIED: Call editTaskSupabase from @/lib/tasks
-  const editTask = useCallback(async (id: string, updatesFromAi: UpdateTaskDetails) => {
-    if (!id) {
-      toast({ title: "Error", description: "Task ID is required for editing.", variant: "destructive" });
-      return;
-    }
-
-    // Map AI's UpdateTaskDetails to SupabaseTaskUpdatePayload for src/lib/tasks's editTask
-    const supabaseUpdates: SupabaseTaskUpdatePayload = {};
-    if (updatesFromAi.newText !== undefined) supabaseUpdates.title = updatesFromAi.newText;
-    if (updatesFromAi.status !== undefined) supabaseUpdates.status = updatesFromAi.status;
-    if (updatesFromAi.priority !== undefined) supabaseUpdates.priority = updatesFromAi.priority;
-    // Note: The TaskType in useTasks uses 'text' for title.
-    // The SupabaseTaskUpdatePayload (from src/lib/tasks) uses 'title'. This mapping is now correct.
-    // Other fields from UpdateTaskDetails that match SupabaseTaskUpdatePayload:
-    if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
-    if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
-    if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
-    // dueDate needs to be mapped if AI provides it and it matches a field in SupabaseTaskUpdatePayload
-    // Assuming AI's UpdateTaskDetailsSchema does not currently output dueDate. If it did, add mapping here.
-
-    if (Object.keys(supabaseUpdates).length === 0) {
-      toast({ title: "Info", description: "No actionable changes identified by AI for the task update." });
-      return;
-    }
-    
-    const { error } = await editTaskSupabase(id, supabaseUpdates);
-
-    if (error) {
-      console.error("Failed to edit task via Supabase function", error);
-      toast({ title: "Error", description: `Failed to edit task: ${error.message}`, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Task updated by AI." });
-      await fetchAndSetTasks(); // Refetch to reflect changes
-    }
-  }, [toast, fetchAndSetTasks]);
-  
-  // NEW: Function for direct updates to task details
+  // REFACTORED: updateTask for optimistic updates
   const updateTask = useCallback(async (id: string, updates: SupabaseTaskUpdatePayload) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required for updating.", variant: "destructive" });
       return;
     }
     if (Object.keys(updates).length === 0) {
-      toast({ title: "Info", description: "No changes provided for the task update." });
       return;
     }
 
-    // Ensure update_at is part of the updates payload if not already
-    const payloadWithTimestamp = { ...updates, update_at: new Date().toISOString() };
+    const originalTasks = tasks;
 
-    const { error } = await editTaskSupabase(id, payloadWithTimestamp); // Use editTaskSupabase from @/lib/tasks
+    const applyOptimisticUpdates = (task: TaskType): TaskType => {
+      const taskTypeUpdates: Partial<TaskType> = {};
+      if (updates.title !== undefined) taskTypeUpdates.text = updates.title;
+      if (updates.completed !== undefined) taskTypeUpdates.completed = updates.completed;
+      if (updates.tags !== undefined) taskTypeUpdates.tags = updates.tags || []; 
+      
+      if (updates.priority !== undefined) {
+        const validPriorities: Priority[] = ['high', 'medium', 'low', 'none'];
+        if (validPriorities.includes(updates.priority as Priority)) {
+          taskTypeUpdates.priority = updates.priority as Priority;
+        } else {
+          console.warn(`Optimistic update: Invalid priority value "${updates.priority}" received, defaulting to 'none'.`);
+          taskTypeUpdates.priority = 'none';
+        }
+      }
 
-    if (error) {
-      console.error("Failed to update task", error);
-      toast({ title: "Error", description: `Failed to update task: ${error.message}`, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Task updated." });
-      await fetchAndSetTasks(); // Refetch to reflect changes
+      if (updates.status !== undefined) {
+        if (TASK_STATUS_OPTIONS.includes(updates.status as TaskStatus)) {
+          taskTypeUpdates.status = updates.status as TaskStatus;
+        } else {
+          console.warn(`Optimistic update: Invalid status value "${updates.status}" received, defaulting to DEFAULT_TASK_STATUS.`);
+          taskTypeUpdates.status = DEFAULT_TASK_STATUS;
+        }
+      }
+
+      if (updates.notes !== undefined) taskTypeUpdates.notes = updates.notes || '';
+      if (updates.attachments !== undefined) taskTypeUpdates.attachments = updates.attachments || [];
+      if (updates.assigned_to !== undefined) taskTypeUpdates.assignedTo = updates.assigned_to || undefined;
+      if (updates.due_date !== undefined) taskTypeUpdates.dueDate = updates.due_date ? new Date(updates.due_date).getTime() : undefined;
+      
+      taskTypeUpdates.updateAt = new Date().getTime();
+
+      return { ...task, ...taskTypeUpdates };
+    };
+
+    const optimisticallyUpdatedTasks = updateTaskInList(originalTasks, id, applyOptimisticUpdates);
+    setTasks(optimisticallyUpdatedTasks);
+
+    const payloadForSupabase = { ...updates, update_at: new Date().toISOString() };
+
+    try {
+      const { error: supabaseError } = await editTaskSupabase(id, payloadForSupabase);
+      if (supabaseError) {
+        throw supabaseError; 
+      }
+      // Success toast can be more specific if desired, or kept generic
+      // toast({ title: "Success", description: "Task updated." }); 
+      // No fetchAndSetTasks() here to maintain optimistic update feel
+    } catch (error: any) {
+      console.error("Failed to update task in Supabase, rolling back UI.", error);
+      setTasks(originalTasks); // Rollback UI
+      toast({ 
+        title: "Update Failed", 
+        description: `Task update failed: ${error.message}. Changes have been reverted.`, 
+        variant: "destructive" 
+      });
     }
-  }, [toast, fetchAndSetTasks]);
+  }, [tasks, toast]); // TASK_STATUS_OPTIONS, DEFAULT_TASK_STATUS are constants, no need for deps
 
-  // NEW: Function to update only the priority
-  const updateTaskPriority = useCallback(async (id: string, priority: Priority) => {
-    await updateTask(id, { priority });
-  }, [updateTask]); // Depends on the new updateTask
+  // editTask (AI flow) will now use the optimistic updateTask
+  const editTask = useCallback(async (id: string, updatesFromAi: UpdateTaskDetails) => {
+    if (!id) {
+      toast({ title: "Error", description: "Task ID is required for AI editing.", variant: "destructive" });
+      return;
+    }
+    const supabaseUpdates: SupabaseTaskUpdatePayload = {};
+    if (updatesFromAi.newText !== undefined) supabaseUpdates.title = updatesFromAi.newText;
+    if (updatesFromAi.status !== undefined) supabaseUpdates.status = updatesFromAi.status;
+    if (updatesFromAi.priority !== undefined) supabaseUpdates.priority = updatesFromAi.priority;
+    if (updatesFromAi.assignedTo !== undefined) supabaseUpdates.assigned_to = updatesFromAi.assignedTo === "" ? null : updatesFromAi.assignedTo;
+    if (updatesFromAi.tags !== undefined) supabaseUpdates.tags = updatesFromAi.tags;
+    if (updatesFromAi.notes !== undefined) supabaseUpdates.notes = updatesFromAi.notes;
+    // dueDate from AI would need mapping here if it was part of UpdateTaskDetails
 
-  // MODIFIED: Call toggleCompleteSupabase from @/lib/tasks
+    if (Object.keys(supabaseUpdates).length === 0) {
+      toast({ title: "AI Info", description: "No actionable changes identified by AI for the task update." });
+      return;
+    }
+    
+    await updateTask(id, supabaseUpdates); // Uses the new optimistic updateTask
+    // Toast for AI completion might be better handled by processAiInput or here if needed
+    toast({ title: "Success", description: "Task updated by AI." }); // This might be redundant if updateTask shows its own success
+
+  }, [toast, updateTask]);
+  
+  // REFACTORED: toggleComplete to use optimistic updateTask
   const toggleComplete = useCallback(async (id: string, currentCompleted: boolean) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return;
     }
-    
-    // toggleCompleteSupabase expects the *current* status to then invert it.
-    const { error } = await toggleCompleteSupabase(id, currentCompleted);
+    const newCompletedStatus = !currentCompleted;
+    await updateTask(id, { completed: newCompletedStatus });
+    // Specific toast for completion
+    toast({ title: "Success", description: "Task completion toggled." });
+  }, [toast, updateTask]);
 
-    if (error) {
-      console.error("Failed to toggle task completion via Supabase function", error);
-      toast({ title: "Error", description: `Failed to toggle task: ${error.message}`, variant: "destructive" });
-    } else {
-      toast({ title: "Success", description: "Task completion toggled." });
-      await fetchAndSetTasks();
-    }
-  }, [toast, fetchAndSetTasks]);
+  // REFACTORED: updateTaskPriority to use optimistic updateTask
+  const updateTaskPriority = useCallback(async (id: string, priority: Priority) => {
+    await updateTask(id, { priority });
+    // Specific toast for priority
+    toast({ title: "Success", description: "Task priority updated." });
+  }, [toast, updateTask]);
 
-  // MODIFIED: Call generateShareLinkSupabase from @/lib/tasks
+  // generateShareLink remains the same, does not need optimistic update for its primary action
   const generateShareLink = useCallback(async (id: string): Promise<string | null> => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return null;
     }
-    
-    const { data: updatedTask, error } = await generateShareLinkSupabase(id);
-
-    if (error || !updatedTask || !updatedTask.share_id) {
+    const { data: updatedTaskAfterShare, error } = await generateShareLinkSupabase(id);
+    if (error || !updatedTaskAfterShare || !updatedTaskAfterShare.share_id) {
         console.error("Failed to generate share link via Supabase function", error);
         toast({title: "Error", description: `Could not generate share link: ${error?.message || 'No share ID returned.'}`, variant: "destructive"});
         return null;
     }
-    
-    toast({title: "Share Link Generated", description: `Task share ID: ${updatedTask.share_id}.`});
-    await fetchAndSetTasks(); // Refetch to show new share_id if displayed
-    return `${window.location.origin}/share/task/${updatedTask.share_id}`; 
+    toast({title: "Share Link Generated", description: `Task share ID: ${updatedTaskAfterShare.share_id}.`});
+    // Potentially update local task with share_id optimistically or refetch for this one task
+    // For now, fetchAndSetTasks is simple, but for true optimistic, this could be refined.
+    await fetchAndSetTasks(); 
+    return `${window.location.origin}/share/task/${updatedTaskAfterShare.share_id}`;
   }, [toast, fetchAndSetTasks]);
 
-  // MODIFIED: Use the actual AI flow
+  // processAiInput still uses fetchAndSetTasks indirectly via addTask, deleteTask, editTask (which now uses updateTask)
+  // Consider if processAiInput needs more granular optimistic updates for each sub-operation.
+  // For now, its internal calls to addTask/deleteTask will cause refetches.
+  // editTask within processAiInput now correctly uses the optimistic updateTask.
   const processAiInput = useCallback(async (input: ProcessTaskInput): Promise<ProcessTaskOutput | null> => {
     toast({ title: "AI Processing...", description: "Please wait.", duration: 2000});
     try {
       const aiOutput = await processAiInputFlow(input);
-
       if (!aiOutput) {
         toast({ title: "AI Error", description: "No output from AI.", variant: "destructive" });
         return null;
       }
-
       let operationsPerformed = false;
-      // tasksCurrentlyInState is not strictly needed if findTaskByTextRecursive always uses the latest `tasks` state
-      // and if addTask refetches properly before the next find call for a different subtask group.
-      // However, for finding parents of subtasks *within the same AI batch*, we need a more direct approach.
+      const newlyCreatedParentsMap = new Map<string, string>();
 
-      // Process tasks to add (Revised Two-Pass Approach)
       if (aiOutput.tasksToAdd && aiOutput.tasksToAdd.length > 0) {
         const mainTasksFromAI = aiOutput.tasksToAdd.filter(t => !t.parentTaskText);
         const subTasksFromAI = aiOutput.tasksToAdd.filter(t => !!t.parentTaskText);
-        const newlyCreatedParentsMap = new Map<string, string>(); // Maps task text to new ID
-
-        // Pass 1: Add main tasks
         for (const taskToAdd of mainTasksFromAI) {
           const newTaskId = await addTask(taskToAdd.text, undefined);
           if (newTaskId) {
@@ -375,72 +417,63 @@ export function useTasks() {
             operationsPerformed = true;
           }
         }
+        // addTask calls fetchAndSetTasks, so tasks state is updated for next step
+        const currentTasksStateForAISubtasks = tasks; // Capture state after main tasks are added (or rely on tasks being updated)
 
-        // Pass 2: Add subtasks
-        // Note: addTask internally calls fetchAndSetTasks, so the `tasks` state variable 
-        // will be updated after each main task addition. 
-        // The newlyCreatedParentsMap gives immediate access to IDs from THIS batch.
         for (const taskToAdd of subTasksFromAI) {
           let parentId: string | null = null;
           if (taskToAdd.parentTaskText) {
             if (newlyCreatedParentsMap.has(taskToAdd.parentTaskText)) {
               parentId = newlyCreatedParentsMap.get(taskToAdd.parentTaskText)!;
             } else {
-              // Parent wasn't in *this* batch of new main tasks, search existing/recently-added state
-              const parentTask = findTaskByTextRecursive(tasks, taskToAdd.parentTaskText);
+              const parentTask = findTaskByTextRecursive(currentTasksStateForAISubtasks, taskToAdd.parentTaskText);
               if (parentTask) {
                 parentId = parentTask.id;
               } else {
-                console.warn(`Parent task with text "${taskToAdd.parentTaskText}" not found for subtask "${taskToAdd.text}". Adding as top-level.`);
+                console.warn(`Parent task "${taskToAdd.parentTaskText}" not found for AI subtask. Adding as top-level.`);
               }
             }
           }
           const newSubtaskId = await addTask(taskToAdd.text, parentId ?? undefined);
-          if (newSubtaskId) {
-            operationsPerformed = true;
-          }
+          if (newSubtaskId) operationsPerformed = true;
         }
       }
 
-      // Process tasks to remove
       if (aiOutput.tasksToRemove && aiOutput.tasksToRemove.length > 0) {
-        // Use the current `tasks` state which should be updated by any `addTask` operations above.
+        const currentTasksStateForAIDeletion = tasks; // Capture most recent state
         for (const taskToRemove of aiOutput.tasksToRemove) {
-          const task = findTaskByTextRecursive(tasks, taskToRemove.text);
+          const task = findTaskByTextRecursive(currentTasksStateForAIDeletion, taskToRemove.text);
           if (task) {
             await deleteTask(task.id);
             operationsPerformed = true;
           } else {
-            console.warn(`Task with text "${taskToRemove.text}" not found for deletion.`);
-            toast({title: "AI Info", description: `Task "${taskToRemove.text}" for deletion not found.`, variant: "default"});
+            toast({title: "AI Info", description: `Task "${taskToRemove.text}" for deletion not found.`});
           }
         }
       }
 
-      // Process tasks to update
       if (aiOutput.tasksToUpdate && aiOutput.tasksToUpdate.length > 0) {
-        // Use the current `tasks` state.
+        // editTask (which uses updateTask) is now optimistic, no full refetch from its direct call.
+        const currentTasksStateForAIUpdate = tasks;
         for (const taskToUpdate of aiOutput.tasksToUpdate) {
-          const task = findTaskByTextRecursive(tasks, taskToUpdate.taskIdentifier); 
+          const task = findTaskByTextRecursive(currentTasksStateForAIUpdate, taskToUpdate.taskIdentifier); 
           if (task) {
             await editTask(task.id, taskToUpdate); 
             operationsPerformed = true;
           } else {
-            console.warn(`Task with text "${taskToUpdate.taskIdentifier}" not found for update.`);
-            toast({title: "AI Info", description: `Task "${taskToUpdate.taskIdentifier}" for update not found.`, variant: "default"});
+             toast({title: "AI Info", description: `Task "${taskToUpdate.taskIdentifier}" for update not found.`});
           }
         }
       }
 
       if (operationsPerformed) {
-        // A single fetchAndSetTasks at the end might be more efficient if addTask/deleteTask/editTask 
-        // didn't already call it. But since they do, the state should be mostly consistent.
-        // A final call here ensures the absolute latest state if there were rapid sequential operations not fully captured.
-        // However, given current structure, this might be redundant. Let's rely on individual function refetches for now.
-        // If issues persist, consider a single final fetchAndSetTasks() here and make internal ones conditional.
+        // If addTask or deleteTask were called, fetchAndSetTasks already ran.
+        // If only editTask was called, UI is optimistically updated.
+        // A final fetch might still be desired by some for absolute consistency after batch AI ops.
+        // For now, let's assume individual function refetches (or lack thereof for optimistic ones) are okay.
         toast({ title: "AI Actions Completed", description: "Tasks managed by AI.", duration: 3000 });
       } else if (!aiOutput.tasksToAdd?.length && !aiOutput.tasksToRemove?.length && !aiOutput.tasksToUpdate?.length) {
-        toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage from your input.", duration: 3000 });
+        toast({ title: "AI No Action", description: "AI did not identify specific tasks to manage.", duration: 3000 });
       }
       
       return aiOutput;
@@ -450,15 +483,16 @@ export function useTasks() {
       toast({ title: "AI Error", description: error.message || "Failed to process AI command.", variant: "destructive" });
       return null;
     }
-  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow]); // Added processAiInputFlow to dependencies
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toast, addTask, deleteTask, editTask, tasks, fetchAndSetTasks, processAiInputFlow]);
 
   return { 
     tasks, 
     isLoading, 
     addTask,
     deleteTask,
-    editTask,
-    updateTask,
+    editTask, // This is the AI specific editTask, which now calls the general updateTask
+    updateTask, // The general optimistic updateTask
     toggleComplete,
     updateTaskPriority,
     addSubtask,
