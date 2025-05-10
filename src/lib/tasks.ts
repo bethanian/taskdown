@@ -58,7 +58,10 @@ export async function editTask(
     .single(); // .single() assumes the ID is unique and will return one row or an error
 
   if (error) {
-    console.error(`Error editing task (ID: ${taskId}):`, error); // Log the raw error object
+    // Log details explicitly in the string part of console.error
+    // as the raw error object sometimes stringifies to "{}" in the Next.js overlay.
+    const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
+    console.error(`Error editing task (ID: ${taskId}): ${errorDetailsString}`, error);
   }
   return { data: data as Task | null, error };
 }
@@ -86,7 +89,8 @@ export async function toggleComplete(
     .single();
 
   if (error) {
-    console.error('Error toggling task completion:', error);
+    const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
+    console.error(`Error toggling task completion (ID: ${taskId}): ${errorDetailsString}`, error);
   }
   return { data: data as Task | null, error };
 }
@@ -115,7 +119,8 @@ export async function generateShareLink(
     .single();
 
   if (error) {
-    console.error('Error generating share link:', error);
+    const errorDetailsString = `Code: ${error.code || 'N/A'}, Message: ${error.message || 'N/A'}, Details: ${error.details || 'N/A'}, Hint: ${error.hint || 'N/A'}`;
+    console.error(`Error generating share link (ID: ${taskId}): ${errorDetailsString}`, error);
   }
   return { data: data as Task | null, error };
 }
