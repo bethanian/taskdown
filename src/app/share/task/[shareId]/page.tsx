@@ -2,7 +2,6 @@
 
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
-// import { useTasks } from '@/hooks/useTasks'; // We will fetch directly for shared tasks
 import type { Task, Attachment } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,28 +12,8 @@ import Link from 'next/link';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 import { Header } from '@/components/taskdown/Header';
 import { MarkdownWithHighlight } from '@/components/taskdown/MarkdownWithHighlight';
-import { LOCALSTORAGE_TASKS_KEY } from '@/lib/constants'; // For temporary local check
-import localforage from 'localforage'; // For temporary local check
-
-// Helper to find a task by shareId recursively
-// This helper would ideally not be needed here if backend fetches specific task
-const findTaskByShareIdRecursive = (
-  tasksToSearch: Task[],
-  shareIdToFind: string
-): Task | null => {
-  for (const task of tasksToSearch) {
-    if (task.shareId === shareIdToFind) {
-      return task;
-    }
-    if (task.subtasks && task.subtasks.length > 0) {
-      const foundInSubtasks = findTaskByShareIdRecursive(task.subtasks, shareIdToFind);
-      if (foundInSubtasks) {
-        return foundInSubtasks;
-      }
-    }
-  }
-  return null;
-};
+import { supabase } from '@/lib/supabaseClient';
+import { DEFAULT_TASK_STATUS } from '@/lib/types';
 
 const priorityConfigDisplay: Record<Task['priority'], { label: string; iconClassName: string; badgeVariant?: "default" | "secondary" | "destructive" | "outline" }> = {
   high: { label: 'High', iconClassName: 'text-red-500', badgeVariant: 'destructive' },
@@ -249,37 +228,50 @@ export default function ShareTaskPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!shareId) {
-        setLoading(false);
-        setError("Invalid share link: No Share ID provided.");
-        return;
-    }
-    
-    setLoading(true);
-    setError(null);
-
     async function fetchSharedTask() {
-      try {
-        // THIS IS A TEMPORARY LOCAL CHECK AND WILL NOT WORK FOR OTHER USERS.
-        // Replace this with a backend API call to fetch the task by shareId.
-        console.log(`Attempting to find task with shareId: ${shareId} locally.`);
-        const allTasks = await localforage.getItem<Task[]>(LOCALSTORAGE_TASKS_KEY);
+      if (!shareId) {
+        setError("Share ID is missing.");
+        setLoading(false);
+        return;
+      }
 
-        if (allTasks) {
-          const foundTask = findTaskByShareIdRecursive(allTasks, shareId);
-          if (foundTask) {
-            setSharedTask(foundTask);
-          } else {
-            setError(
-              "Shared task not found. This link may be invalid, the task may have been deleted, or it's not accessible to you."
-            );
-          }
-        } else {
-          setError("No tasks found in your local storage. Cannot verify shared link.");
+      try {
+        const { data, error: dbError } = await supabase
+          .from('tasks')
+          .select('*, subtasks:tasks!parent_id(*)') 
+          .eq('share_id', shareId)
+          .single();
+
+        if (dbError || !data) {
+          console.error("Supabase fetch error or no data:", dbError);
+          setError(`Task with share ID "${shareId}" not found or error loading task.`);
+          setLoading(false);
+          return; // Stop if Supabase fails or returns no data
         }
-      } catch (e: any) {
-        console.error("Error fetching shared task (locally):", e);
-        setError(e.message || "An error occurred while trying to load the shared task.");
+
+        // Map Supabase data (including subtasks if joined correctly) to TaskType
+        const mapSupabaseRowToTaskType = (row: any): Task => ({
+          id: row.id,
+          text: row.title,
+          completed: row.completed,
+          tags: row.tags || [],
+          priority: row.priority || 'none',
+          status: row.status || DEFAULT_TASK_STATUS, // Use imported DEFAULT_TASK_STATUS
+          createdAt: new Date(row.created_at).getTime(),
+          updateAt: new Date(row.updated_at).getTime(),
+          dueDate: row.due_date ? new Date(row.due_date).getTime() : undefined,
+          notes: row.notes || '',
+          attachments: row.attachments || [],
+          assignedTo: row.assigned_to || undefined,
+          shareId: row.share_id || undefined,
+          subtasks: row.subtasks ? row.subtasks.map(mapSupabaseRowToTaskType) : [], // Recursive mapping for subtasks
+        });
+
+        setSharedTask(mapSupabaseRowToTaskType(data));
+       
+      } catch (err: any) {
+        console.error("General error fetching shared task:", err);
+        setError(err.message || "An unexpected error occurred.");
       } finally {
         setLoading(false);
       }
@@ -288,57 +280,73 @@ export default function ShareTaskPage() {
     fetchSharedTask();
   }, [shareId]);
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+        <Header />
+        <div className="flex flex-col items-center justify-center flex-grow">
+          <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+          <p className="text-lg text-muted-foreground">Loading shared task...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+        <Header />
+        <main className="flex flex-col items-center justify-center flex-grow px-4">
+            <Card className="w-full max-w-md shadow-lg">
+                <CardHeader className="bg-destructive text-destructive-foreground p-6">
+                    <CardTitle className="text-2xl">Error Loading Task</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 text-center">
+                    <p className="text-muted-foreground mb-6">{error}</p>
+                    <Link href="/" passHref>
+                        <Button variant="outline">
+                            <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
+                        </Button>
+                    </Link>
+                </CardContent>
+            </Card>
+        </main>
+      </div>
+    );
+  }
+
+  if (!sharedTask) {
+    // This case should ideally be covered by the error state if Supabase fetch fails
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen bg-background">
+          <Header />
+          <main className="flex flex-col items-center justify-center flex-grow px-4">
+            <Card className="w-full max-w-md shadow-lg">
+                <CardHeader className="bg-destructive text-destructive-foreground p-6">
+                    <CardTitle className="text-2xl">Task Not Found</CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 text-center">
+                    <p className="text-muted-foreground mb-6">
+                        The task you are looking for could not be found or is no longer available for sharing.
+                    </p>
+                    <Link href="/" passHref>
+                        <Button variant="outline">
+                            <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
+                        </Button>
+                    </Link>
+                </CardContent>
+            </Card>
+          </main>
+        </div>
+    );
+  }
+
   return (
-    <div className="container mx-auto max-w-7xl py-8 px-4 min-h-screen flex flex-col">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 text-white">
       <Header />
-      <main className="flex-grow mt-8">
-        {loading && (
-          <div className="text-center py-10">
-            <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
-            <p className="text-lg text-muted-foreground">Loading shared task...</p>
-          </div>
-        )}
-        {error && (
-          <Card className="w-full max-w-lg mx-auto bg-destructive/10 border-destructive">
-            <CardHeader>
-              <CardTitle className="text-destructive text-xl">Error Loading Task</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-destructive-foreground text-sm">{error}</p>
-              <Button asChild variant="ghost" className="text-destructive-foreground hover:bg-destructive/20">
-                <Link href="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
-        {!loading && !error && sharedTask && (
-          <SharedTaskDisplay task={sharedTask} />
-        )}
-        {!loading && !error && !sharedTask && (
-           // This state might be briefly visible if localforage is empty and then error is set.
-           // The error message for 'foundTask' being null covers this better.
-           <Card className="w-full max-w-lg mx-auto">
-            <CardHeader>
-              <CardTitle className="text-xl">Task Not Found</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <p className="text-muted-foreground text-sm">
-                The shared task could not be loaded. It might have been deleted or the link is incorrect.
-              </p>
-              <Button asChild variant="link" className="px-0">
-                <Link href="/">
-                  <ArrowLeft className="h-4 w-4 mr-2" /> Go to Homepage
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-        )}
+      <main className="container mx-auto py-8 px-4">
+        <SharedTaskDisplay task={sharedTask} />
       </main>
-       <footer className="text-center py-6 text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} Taskdown. Shared Task View.</p>
-      </footer>
     </div>
   );
 } 
