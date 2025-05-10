@@ -2,19 +2,20 @@
 
 import type { Task, TaskStatus, Priority } from '@/lib/types';
 import { KanbanCard } from './KanbanCard';
-import { Droppable } from '@dnd-kit/core'; // For future DND
+import { useDroppable } from '@dnd-kit/core'; // CORRECTED IMPORT: Was Droppable
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'; // For future DND
+import type { useTasks } from '@/hooks/useTasks'; // Import useTasks for ReturnType
 
 interface KanbanColumnProps {
   status: TaskStatus;
   tasks: Task[];
   onEditTask: (task: Task) => void;
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
-  onToggleComplete: (id: string) => void;
+  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete']; // CORRECTED SIGNATURE
   onDeleteTask: (id: string) => void;
-  onUpdatePriority: (id: string, priority: Priority) => void;
-  onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
-  onGenerateShareLink: (taskId: string) => Promise<string | null>;
+  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority']; // Match type from useTasks
+  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];         // Match type from useTasks
+  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink']; // Match type from useTasks
   searchTerm?: string;
 }
 
@@ -23,7 +24,7 @@ export function KanbanColumn({
   tasks, 
   onEditTask, 
   // onUpdateTaskStatus, // Will be used by DND
-  onToggleComplete,
+  onToggleComplete, // This prop now has the correct type
   onDeleteTask,
   onUpdatePriority,
   onAddSubtask,
@@ -50,7 +51,7 @@ export function KanbanColumn({
               key={task.id} 
               task={task} 
               onEditTask={onEditTask} 
-              onToggleComplete={onToggleComplete}
+              onToggleComplete={onToggleComplete} // Passed down with correct signature
               onDeleteTask={onDeleteTask}
               onUpdatePriority={onUpdatePriority}
               onAddSubtask={onAddSubtask}

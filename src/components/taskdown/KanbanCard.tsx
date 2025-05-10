@@ -3,6 +3,7 @@
 
 import React from 'react';
 import type { Task, Priority } from '@/lib/types';
+import type { useTasks } from '@/hooks/useTasks'; // Import useTasks for ReturnType
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -18,11 +19,11 @@ import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
 interface KanbanCardProps {
   task: Task;
   onEditTask: (task: Task) => void;
-  onToggleComplete: (id: string) => void;
+  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete'];
   onDeleteTask: (id: string) => void;
-  onUpdatePriority: (id: string, priority: Priority) => void;
-  onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
-  onGenerateShareLink: (taskId: string) => Promise<string | null>;
+  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority'];
+  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];
+  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink'];
   searchTerm?: string;
 }
 
@@ -71,8 +72,6 @@ export function KanbanCard({
   onEditTask, 
   onToggleComplete,
   onDeleteTask,
-  // onUpdatePriority, // This might be better handled in the edit dialog for Kanban card
-  // onAddSubtask, // Subtask adding might be complex for a small card, better in edit dialog
   onGenerateShareLink,
   searchTerm 
 }: KanbanCardProps) {
@@ -108,10 +107,10 @@ export function KanbanCard({
                 "flex items-center gap-2 cursor-pointer flex-grow min-w-0", 
                 task.completed && "text-muted-foreground line-through"
               )}
-              onClick={() => onToggleComplete(task.id)}
+              onClick={() => onToggleComplete(task.id, task.completed)}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggleComplete(task.id)}
+              onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onToggleComplete(task.id, task.completed)}
               aria-pressed={task.completed}
               aria-label={task.completed ? `Mark task as incomplete: ${task.text}` : `Mark task as complete: ${task.text}`}
             >

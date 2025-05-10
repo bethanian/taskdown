@@ -1,7 +1,7 @@
 // src/components/taskdown/ChecklistItem.tsx
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Task, Priority, Attachment } from '@/lib/types';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -31,10 +31,11 @@ import { CSS } from '@dnd-kit/utilities';
 import { cn } from '@/lib/utils';
 import { MarkdownWithHighlight, HighlightedText } from './MarkdownWithHighlight';
 import { format, isPast, isToday, differenceInCalendarDays } from 'date-fns';
+import { useToast } from "@/hooks/use-toast";
 
 interface ChecklistItemProps {
   task: Task;
-  onToggleComplete: (id: string) => void;
+  onToggleComplete: (id: string, currentCompletedState: boolean) => void;
   onDelete: (id: string) => void;
   onEdit: (task: Task) => void;
   onUpdatePriority: (id: string, priority: Priority) => void;
@@ -95,6 +96,13 @@ export function ChecklistItem({
   depth = 0,
   searchTerm,
 }: ChecklistItemProps) {
+  const { toast } = useToast();
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
   const {
     attributes,
     listeners,
@@ -131,6 +139,26 @@ export function ChecklistItem({
       onAddSubtask(task.id, newSubtaskText.trim());
       setNewSubtaskText('');
       setShowAddSubtaskInput(false);
+    }
+  };
+
+  const handleShareLink = async () => {
+    const shareUrl = await onGenerateShareLink(task.id);
+    if (shareUrl) {
+      try {
+        await navigator.clipboard.writeText(shareUrl);
+        toast({
+          title: "Link Copied",
+          description: "Shareable link copied to clipboard.",
+        });
+      } catch (err) {
+        console.error("Failed to copy link: ", err);
+        toast({
+          title: "Copy Failed",
+          description: "Could not copy link to clipboard. You may need to grant permission or copy manually.",
+          variant: "destructive",
+        });
+      }
     }
   };
   
@@ -210,7 +238,7 @@ export function ChecklistItem({
             <Checkbox
               id={`task-${task.id}`}
               checked={task.completed}
-              onCheckedChange={() => onToggleComplete(task.id)}
+              onCheckedChange={() => onToggleComplete(task.id, task.completed)}
               aria-label={`Mark task ${task.completed ? 'incomplete' : 'complete'}`}
               className="h-4 w-4 rounded-sm border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground"
             />
@@ -230,11 +258,11 @@ export function ChecklistItem({
 
             <div className="flex-grow min-w-0 flex items-center justify-between">
               <div className="flex-grow min-w-0 flex items-center gap-1">
-                <div id={`task-text-${task.id}`} className="cursor-pointer flex-grow min-w-0" onClick={() => onToggleComplete(task.id)}>
+                <div id={`task-text-${task.id}`} className="cursor-pointer flex-grow min-w-0" onClick={() => onToggleComplete(task.id, task.completed)}>
                     <ChecklistItemContent text={task.text} completed={task.completed} searchTerm={searchTerm} />
                 </div>
                 <div className="flex flex-wrap shrink-0 gap-0.5 items-center ml-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-                  {dueDateInfo && (
+                  {isClient && dueDateInfo && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Badge variant="outline" className={cn("text-xs py-0.5 px-1.5 items-center", dueDateInfo.className)}>
@@ -286,7 +314,7 @@ export function ChecklistItem({
                 </Tooltip>
                  <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" onClick={() => onGenerateShareLink(task.id)} className="h-7 w-7">
+                    <Button variant="ghost" size="icon" onClick={handleShareLink} className="h-7 w-7">
                       <Share2 className="h-3.5 w-3.5" />
                       <span className="sr-only">Share task</span>
                     </Button>

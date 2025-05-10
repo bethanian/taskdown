@@ -20,7 +20,7 @@ export interface Task {
   priority: Priority;
   status: TaskStatus; // Ensure all tasks have a status
   createdAt: number; // Store as timestamp for easier localForage storage
-  updatedAt: number; // Store as timestamp
+  updateAt: number; // Store as timestamp
   dueDate?: number; // Optional: due date as a timestamp
   subtasks?: Task[]; // Optional array for nested subtasks
   notes?: string; // Optional multiline text notes

@@ -8,6 +8,7 @@ import { KanbanView } from '@/components/taskdown/KanbanView';
 import { useTasks } from '@/hooks/useTasks';
 import { TagFilter } from '@/components/taskdown/TagFilter';
 import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
+import type { TaskUpdate } from '@/lib/tasks';
 import { GlobalSearchBar } from '@/components/taskdown/GlobalSearchBar';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"; 
 import { List, LayoutGrid, Sparkles } from 'lucide-react'; 
@@ -25,7 +26,8 @@ export default function TaskdownPage() {
     addSubtask,
     toggleComplete,
     deleteTask,
-    editTask,
+    updateTask,
+    updateTaskPriority,
     generateShareLink,
     processAiInput
   } = useTasks();
@@ -159,12 +161,8 @@ export default function TaskdownPage() {
   }, [tasks, isLoading, toast]); // remindedTaskIds is intentionally omitted to allow re-triggering on task changes. Set inside.
 
   // --- Wrapper functions for editTask --- 
-  const handleUpdateTaskPriority = (taskId: string, priority: Priority) => {
-    editTask(taskId, { priority });
-  };
-
   const handleUpdateTaskStatus = (taskId: string, status: TaskStatus) => {
-    editTask(taskId, { status });
+    updateTask(taskId, { status });
   };
 
   // Wrapper for KanbanView's onEditTask prop
@@ -177,9 +175,19 @@ export default function TaskdownPage() {
     attachments: Attachment[], 
     status: TaskStatus, 
     assignedTo: string | undefined, 
-    dueDate: number | undefined
+    dueDateMs: number | undefined
   ) => {
-    editTask(id, { text, tags, priority, notes, attachments, status, assignedTo, dueDate });
+    const updates: TaskUpdate = {
+      title: text,
+      tags,
+      priority,
+      notes,
+      attachments,
+      status,
+      assigned_to: assignedTo,
+      due_date: dueDateMs ? new Date(dueDateMs).toISOString() : null
+    };
+    updateTask(id, updates);
   };
 
   return (
@@ -230,8 +238,8 @@ export default function TaskdownPage() {
             isLoading={isLoading}
             onToggleComplete={toggleComplete}
             deleteTask={deleteTask}
-            editTask={editTask}
-            onUpdatePriority={handleUpdateTaskPriority}
+            updateTask={updateTask}
+            onUpdatePriority={updateTaskPriority}
             onAddSubtask={addSubtask}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}
             onGenerateShareLink={generateShareLink}
@@ -245,7 +253,7 @@ export default function TaskdownPage() {
             onUpdateTaskStatus={handleUpdateTaskStatus}
             onToggleComplete={toggleComplete}
             onDeleteTask={deleteTask}
-            onUpdatePriority={handleUpdateTaskPriority}
+            onUpdatePriority={updateTaskPriority}
             onAddSubtask={addSubtask}
             onGenerateShareLink={generateShareLink}
             searchTerm={debouncedSearchTerm.trim().toLowerCase()}

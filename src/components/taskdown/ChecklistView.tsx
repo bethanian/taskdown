@@ -3,6 +3,7 @@
 
 import React, { useState } from 'react';
 import type { Task, Priority, Attachment, TaskStatus } from '@/lib/types';
+import type { TaskUpdate } from '@/lib/tasks';
 import { ChecklistItem } from './ChecklistItem';
 import { EditTaskDialog } from './EditTaskDialog';
 import type { useTasks } from '@/hooks/useTasks'; 
@@ -28,13 +29,11 @@ import {
 interface ChecklistViewProps {
   tasks: Task[]; 
   isLoading: boolean;
-  toggleTaskCompletion: ReturnType<typeof useTasks>['toggleTaskCompletion'];
+  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete'];
   deleteTask: ReturnType<typeof useTasks>['deleteTask'];
-  editTask: ReturnType<typeof useTasks>['editTask'];
-  updateTaskPriority: ReturnType<typeof useTasks>['updateTaskPriority'];
-  addSubtask: ReturnType<typeof useTasks>['addSubtask'];
-  setTasks: ReturnType<typeof useTasks>['setTasks']; 
-  saveTasks: ReturnType<typeof useTasks>['saveTasks'];
+  updateTask: ReturnType<typeof useTasks>['updateTask'];
+  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority'];
+  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];
   onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink'];
   searchTerm?: string;
 }
@@ -42,13 +41,11 @@ interface ChecklistViewProps {
 export function ChecklistView({ 
   tasks, 
   isLoading, 
-  toggleTaskCompletion, 
+  onToggleComplete,
   deleteTask, 
-  editTask,
-  updateTaskPriority,
-  addSubtask,
-  setTasks, 
-  saveTasks,
+  updateTask,
+  onUpdatePriority,
+  onAddSubtask,
   onGenerateShareLink,
   searchTerm,
 }: ChecklistViewProps) {
@@ -76,9 +73,19 @@ export function ChecklistView({
     newAttachments: Attachment[],
     newStatus: TaskStatus,
     newAssignedTo: string | undefined,
-    newDueDate: number | undefined // Added newDueDate
+    newDueDateMs: number | undefined 
   ) => {
-    editTask(id, newText, newTags, newPriority, newNotes, newAttachments, newStatus, newAssignedTo, newDueDate); // Pass newDueDate
+    const updates: TaskUpdate = {
+      title: newText,
+      tags: newTags,
+      priority: newPriority,
+      notes: newNotes,
+      attachments: newAttachments,
+      status: newStatus,
+      assigned_to: newAssignedTo === "" ? null : newAssignedTo,
+      due_date: newDueDateMs ? new Date(newDueDateMs).toISOString() : null,
+    };
+    updateTask(id, updates);
     setIsEditDialogOpen(false);
     setEditingTask(null);
   };
@@ -87,14 +94,7 @@ export function ChecklistView({
     const {active, over} = event;
     
     if (over && active.id !== over.id) {
-      const oldIndex = tasks.findIndex((task) => task.id === active.id && task.subtasks?.every(st => st.id !== active.id)); 
-      const newIndex = tasks.findIndex((task) => task.id === over.id && task.subtasks?.every(st => st.id !== over.id)); 
-
-      if (oldIndex !== -1 && newIndex !== -1) {
-        const reorderedDisplayedTasks = arrayMove(tasks, oldIndex, newIndex);
-        setTasks(reorderedDisplayedTasks); 
-        saveTasks(reorderedDisplayedTasks); 
-      }
+      console.warn("Visual drag-and-drop reordering occurred, but changes are not persisted to the backend with this handler.");
     }
   }
 
@@ -150,11 +150,11 @@ export function ChecklistView({
             <ChecklistItem
               key={task.id}
               task={task}
-              onToggleComplete={toggleTaskCompletion}
+              onToggleComplete={onToggleComplete}
               onDelete={deleteTask}
               onEdit={handleEdit}
-              onUpdatePriority={updateTaskPriority}
-              onAddSubtask={addSubtask}
+              onUpdatePriority={onUpdatePriority}
+              onAddSubtask={onAddSubtask}
               onGenerateShareLink={onGenerateShareLink}
               depth={0} 
               searchTerm={searchTerm}

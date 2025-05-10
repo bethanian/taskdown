@@ -5,11 +5,11 @@ alwaysApply: true
 ---
  # IMPORTANT:
 
-# Always read taskdown.md before writing any code.
+# Always read .cursor/rules/taskdown.md before writing any code.
 
-# After adding a major feature or completing a milestone, update taskdown.md.
+# After adding a major feature or completing a milestone, .cursor/rules/taskdown.md.
 
-# Document the entire database schema in taskdown.md.
+# Document the entire database schema in .cursor/rules/taskdown.md.
 
 # For new migrations, make sure to add them to the same file. 
 

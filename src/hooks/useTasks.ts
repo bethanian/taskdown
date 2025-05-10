@@ -33,7 +33,7 @@ interface SupabaseTaskRow extends Record<string, any> { // Define a more specifi
   priority: Priority | null;
   status: TaskStatus | null;
   created_at: string;
-  updated_at: string;
+  update_at: string;
   due_date: string | null;
   notes: string | null;
   attachments: Attachment[] | null;
@@ -51,7 +51,7 @@ const fromSupabase = (row: SupabaseTaskRow): TaskType => {
     priority: row.priority || 'none',
     status: row.status || DEFAULT_TASK_STATUS,
     createdAt: new Date(row.created_at).getTime(), // Assuming created_at is always present
-    updatedAt: new Date(row.updated_at).getTime(), // Assuming updated_at is always present
+    updateAt: new Date(row.update_at).getTime(), // Assuming updated_at is always present
     dueDate: row.due_date ? new Date(row.due_date).getTime() : undefined,
     subtasks: [], // Populated by buildHierarchy
     notes: row.notes || '',
@@ -70,7 +70,7 @@ const toSupabaseInsert = (taskText: string, parentId?: string | null): Partial<S
     priority: 'none',
     status: DEFAULT_TASK_STATUS,
     created_at: now, // Supabase can also default this with now()
-    updated_at: now, // Supabase can also default this with now()
+    update_at: now, // Supabase can also default this with now()
     due_date: null,
     notes: '',
     attachments: [],
@@ -276,32 +276,45 @@ export function useTasks() {
     }
   }, [toast, fetchAndSetTasks]);
   
+  // NEW: Function for direct updates to task details
+  const updateTask = useCallback(async (id: string, updates: SupabaseTaskUpdatePayload) => {
+    if (!id) {
+      toast({ title: "Error", description: "Task ID is required for updating.", variant: "destructive" });
+      return;
+    }
+    if (Object.keys(updates).length === 0) {
+      toast({ title: "Info", description: "No changes provided for the task update." });
+      return;
+    }
+
+    // Ensure update_at is part of the updates payload if not already
+    const payloadWithTimestamp = { ...updates, update_at: new Date().toISOString() };
+
+    const { error } = await editTaskSupabase(id, payloadWithTimestamp); // Use editTaskSupabase from @/lib/tasks
+
+    if (error) {
+      console.error("Failed to update task", error);
+      toast({ title: "Error", description: `Failed to update task: ${error.message}`, variant: "destructive" });
+    } else {
+      toast({ title: "Success", description: "Task updated." });
+      await fetchAndSetTasks(); // Refetch to reflect changes
+    }
+  }, [toast, fetchAndSetTasks]);
+
+  // NEW: Function to update only the priority
+  const updateTaskPriority = useCallback(async (id: string, priority: Priority) => {
+    await updateTask(id, { priority });
+  }, [updateTask]); // Depends on the new updateTask
+
   // MODIFIED: Call toggleCompleteSupabase from @/lib/tasks
-  const toggleComplete = useCallback(async (id: string, completedStatus?: boolean) => {
+  const toggleComplete = useCallback(async (id: string, currentCompleted: boolean) => {
     if (!id) {
       toast({ title: "Error", description: "Task ID is required.", variant: "destructive"});
       return;
     }
     
-    let currentCompleted = completedStatus;
-    if (currentCompleted === undefined) {
-        // Fetch current status if not provided - this is important for toggleCompleteSupabase
-        const { data: taskData, error: fetchError } = await supabase
-            .from('tasks')
-            .select('completed')
-            .eq('id', id)
-            .single();
-
-        if (fetchError || !taskData) {
-            console.error("Failed to fetch task for toggle:", fetchError);
-            toast({ title: "Error", description: "Could not fetch task to toggle.", variant: "destructive"});
-            return;
-        }
-        currentCompleted = taskData.completed;
-    }
-
     // toggleCompleteSupabase expects the *current* status to then invert it.
-    const { error } = await toggleCompleteSupabase(id, currentCompleted as boolean);
+    const { error } = await toggleCompleteSupabase(id, currentCompleted);
 
     if (error) {
       console.error("Failed to toggle task completion via Supabase function", error);
@@ -445,7 +458,9 @@ export function useTasks() {
     addTask,
     deleteTask,
     editTask,
+    updateTask,
     toggleComplete,
+    updateTaskPriority,
     addSubtask,
     generateShareLink,
     processAiInput,

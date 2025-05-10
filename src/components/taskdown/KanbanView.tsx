@@ -6,6 +6,7 @@ import type { Task, TaskStatus, Priority, Attachment } from '@/lib/types';
 import { TASK_STATUS_OPTIONS } from '@/lib/types';
 import { KanbanColumn } from './KanbanColumn';
 import { EditTaskDialog } from './EditTaskDialog'; 
+import type { useTasks } from '@/hooks/useTasks'; // Import useTasks for ReturnType
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 // import { DndContext, closestCenter } from '@dnd-kit/core'; // For future DND
@@ -13,13 +14,13 @@ import Image from 'next/image';
 interface KanbanViewProps {
   tasks: Task[];
   isLoading: boolean;
-  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined, dueDate: number | undefined) => void; // Added dueDate
+  onEditTask: (id: string, text: string, tags: string[], priority: Priority, notes: string, attachments: Attachment[], status: TaskStatus, assignedTo: string | undefined, dueDate: number | undefined) => void;
   onUpdateTaskStatus: (id: string, newStatus: TaskStatus) => void;
-  onToggleComplete: (id: string) => void;
+  onToggleComplete: ReturnType<typeof useTasks>['toggleComplete']; // CORRECTED SIGNATURE
   onDeleteTask: (id: string) => void;
-  onUpdatePriority: (id: string, priority: Priority) => void;
-  onAddSubtask: (parentId: string, text: string, tags?: string[], priority?: Priority) => void;
-  onGenerateShareLink: (taskId: string) => Promise<string | null>;
+  onUpdatePriority: ReturnType<typeof useTasks>['updateTaskPriority']; // Match type from useTasks
+  onAddSubtask: ReturnType<typeof useTasks>['addSubtask'];         // Match type from useTasks
+  onGenerateShareLink: ReturnType<typeof useTasks>['generateShareLink']; // Match type from useTasks
   searchTerm?: string;
 }
 
@@ -28,7 +29,7 @@ export function KanbanView({
   isLoading, 
   onEditTask, 
   onUpdateTaskStatus,
-  onToggleComplete,
+  onToggleComplete, // This prop now has the correct type
   onDeleteTask,
   onUpdatePriority,
   onAddSubtask,
