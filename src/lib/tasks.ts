@@ -58,12 +58,7 @@ export async function editTask(
     .single(); // .single() assumes the ID is unique and will return one row or an error
 
   if (error) {
-    console.error(`Error editing task (ID: ${taskId}):`, {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
+    console.error(`Error editing task (ID: ${taskId}):`, error); // Log the raw error object
   }
   return { data: data as Task | null, error };
 }
@@ -91,12 +86,7 @@ export async function toggleComplete(
     .single();
 
   if (error) {
-    console.error('Error toggling task completion:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
+    console.error('Error toggling task completion:', error);
   }
   return { data: data as Task | null, error };
 }
@@ -125,12 +115,7 @@ export async function generateShareLink(
     .single();
 
   if (error) {
-    console.error('Error generating share link:', {
-      message: error.message,
-      details: error.details,
-      hint: error.hint,
-      code: error.code,
-    });
+    console.error('Error generating share link:', error);
   }
   return { data: data as Task | null, error };
 }
